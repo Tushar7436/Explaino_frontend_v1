@@ -24,28 +24,53 @@ export default function EventOverlay({
 
     // Find active event based on current time
     useEffect(() => {
-        const currentTimeMs = currentTime * 1000; // Convert to milliseconds
-
+        // Find events that should be visible at the current video time
         const active = events.find(event => {
-            const eventTime = event.timestamp;
-            const effectEnd = eventTime + (effectDuration * 1000);
-            return currentTimeMs >= eventTime && currentTimeMs <= effectEnd;
+            // 1. Check displayEffect start/end (seconds)
+            if (event.type === 'displayEffect' && event.start !== undefined && event.end !== undefined) {
+                return currentTime >= event.start && currentTime <= event.end;
+            }
+
+            // 2. Check relative 't' from guide (seconds)
+            if (event.t !== undefined) {
+                const effectEnd = event.t + effectDuration;
+                return currentTime >= event.t && currentTime <= effectEnd;
+            }
+
+            // 3. Fallback: Check normalized timestamp (ms)
+            if (event.timestamp !== undefined) {
+                // Determine if it looks absolute (epoch) or relative (ms since start)
+                const isAbsolute = event.timestamp > 1000000000000;
+                if (!isAbsolute) {
+                    const eventTimeS = event.timestamp / 1000;
+                    const effectEndS = eventTimeS + effectDuration;
+                    return currentTime >= eventTimeS && currentTime <= effectEndS;
+                }
+                // For absolute timestamps, we'd need video start time to sync.
+                // Assuming backend follows guide and sends relative 't' or 'start/end'.
+            }
+
+            return false;
         });
 
         setActiveEvent(active || null);
     }, [currentTime, events, effectDuration]);
 
-    if (!activeEvent || !activeEvent.target?.bbox) return null;
+    if (!activeEvent) return null;
+
+    // Support both bbox and bounds
+    const bbox = activeEvent.target?.bbox || activeEvent.target?.bounds;
+    if (!bbox) return null;
 
     // Scale coordinates from original recording viewport to current video size
     const scaleX = videoWidth / originalViewport.width;
     const scaleY = videoHeight / originalViewport.height;
 
     const scaledBbox = {
-        x: activeEvent.target.bbox.x * scaleX,
-        y: activeEvent.target.bbox.y * scaleY,
-        width: activeEvent.target.bbox.width * scaleX,
-        height: activeEvent.target.bbox.height * scaleY,
+        x: bbox.x * scaleX,
+        y: bbox.y * scaleY,
+        width: bbox.width * scaleX,
+        height: bbox.height * scaleY,
     };
 
     // Effect styling based on event type
@@ -122,13 +147,15 @@ export default function EventOverlay({
                 </defs>
 
                 {/* Dark overlay with spotlight cutout */}
-                <rect
-                    width="100%"
-                    height="100%"
-                    fill="rgba(0, 0, 0, 0.65)"
-                    mask={`url(#spotlight-${activeEvent.timestamp})`}
-                    className="transition-opacity duration-300"
-                />
+                {(activeEvent.type === 'displayEffect' ? activeEvent.style?.dimBackground : true) && (
+                    <rect
+                        width="100%"
+                        height="100%"
+                        fill="rgba(0, 0, 0, 0.65)"
+                        mask={`url(#spotlight-${activeEvent.timestamp || activeEvent.t || activeEvent.start})`}
+                        className="transition-opacity duration-300"
+                    />
+                )}
             </svg>
 
             {/* Highlight Border around the element */}
@@ -140,8 +167,13 @@ export default function EventOverlay({
                     width: `${scaledBbox.width}px`,
                     height: `${scaledBbox.height}px`,
                     zIndex: 20,
-                    boxShadow: `0 0 30px ${style.glowColor}, 0 0 60px ${style.glowColor}`,
-                    animation: 'pulse 1s ease-in-out infinite',
+                    boxShadow: activeEvent.type === 'displayEffect' && activeEvent.style?.outline === 'glow'
+                        ? `0 0 30px ${style.glowColor}, 0 0 60px ${style.glowColor}`
+                        : `0 0 15px ${style.glowColor}`,
+                    animation: activeEvent.type === 'displayEffect' ? 'none' : 'pulse 1s ease-in-out infinite',
+                    transform: activeEvent.type === 'displayEffect' && activeEvent.style?.zoom?.enabled
+                        ? `scale(${activeEvent.style.zoom.scale})`
+                        : 'scale(1)',
                 }}
             >
                 {/* Event Type Label */}
@@ -150,7 +182,7 @@ export default function EventOverlay({
                     style={{ zIndex: 30 }}
                 >
                     {activeEvent.type}
-                    {activeEvent.target.text && (
+                    {activeEvent.target?.text && (
                         <span className="ml-2 font-normal normal-case opacity-90">
                             "{activeEvent.target.text.substring(0, 20)}{activeEvent.target.text.length > 20 ? '...' : ''}"
                         </span>
@@ -229,7 +261,7 @@ export default function EventOverlay({
             )}
 
             {/* Element info tooltip */}
-            {activeEvent.target.selector && (
+            {activeEvent.target?.selector && (
                 <div
                     className="absolute bg-black/80 text-white text-xs px-2 py-1 rounded font-mono"
                     style={{
@@ -239,7 +271,7 @@ export default function EventOverlay({
                         maxWidth: '300px',
                     }}
                 >
-                    {activeEvent.target.selector}
+                    {activeEvent.target?.selector}
                 </div>
             )}
 

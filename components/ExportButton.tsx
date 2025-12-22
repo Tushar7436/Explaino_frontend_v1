@@ -27,26 +27,132 @@ export default function ExportButton({ audioData, videoData, sessionId }: Export
         setProgress(0);
 
         try {
-            // Simulate progress for better UX
-            const progressInterval = setInterval(() => {
-                setProgress(prev => Math.min(prev + 10, 90));
-            }, 200);
+            console.log('[Export] Starting video export with audio merging...');
+            setProgress(10);
 
-            // For now, we'll download the video file directly
-            // In production, you'd want to merge audio and video server-side
+            // Fetch video and audio as blobs
+            console.log('[Export] Fetching video from:', videoData.url);
+            const videoResponse = await fetch(videoData.url);
+            const videoBlob = await videoResponse.blob();
+            setProgress(20);
+
+            console.log('[Export] Fetching audio from:', audioData.url);
+            const audioResponse = await fetch(audioData.url);
+            const audioBlob = await audioResponse.blob();
+            setProgress(30);
+
+            console.log('[Export] Creating media elements...');
+            // Create temporary URLs
+            const videoUrl = URL.createObjectURL(videoBlob);
+            const audioUrl = URL.createObjectURL(audioBlob);
+
+            // Create video and audio elements
+            const videoElement = document.createElement('video');
+            const audioElement = document.createElement('audio');
+
+            videoElement.src = videoUrl;
+            audioElement.src = audioUrl;
+
+            // Wait for both to load metadata
+            await Promise.all([
+                new Promise((resolve) => { videoElement.onloadedmetadata = resolve; }),
+                new Promise((resolve) => { audioElement.onloadedmetadata = resolve; })
+            ]);
+
+            setProgress(40);
+            console.log('[Export] Video duration:', videoElement.duration);
+            console.log('[Export] Audio duration:', audioElement.duration);
+
+            // Apply trimming: 1 second from start and end
+            const TRIM_START = 1;
+            const TRIM_END = 1;
+            const trimmedDuration = Math.max(0, videoElement.duration - TRIM_START - TRIM_END);
+
+            console.log('[Export] Trimmed duration:', trimmedDuration);
+
+            // Set start position
+            videoElement.currentTime = TRIM_START;
+            audioElement.currentTime = TRIM_START;
+
             setStatus('downloading');
+            setProgress(50);
 
-            // Create a download link for the video
+            // Create media streams
+            const videoStream = (videoElement as any).captureStream();
+            const audioStream = (audioElement as any).captureStream();
+
+            // Combine video and audio tracks
+            const combinedStream = new MediaStream([
+                ...videoStream.getVideoTracks(),
+                ...audioStream.getAudioTracks()
+            ]);
+
+            console.log('[Export] Combined stream tracks:', combinedStream.getTracks().length);
+
+            // Record the combined stream
+            const chunks: Blob[] = [];
+            const mediaRecorder = new MediaRecorder(combinedStream, {
+                mimeType: 'video/webm;codecs=vp8,opus'
+            });
+
+            mediaRecorder.ondataavailable = (event) => {
+                if (event.data.size > 0) {
+                    chunks.push(event.data);
+                }
+            };
+
+            // Start playback and recording
+            const recordingPromise = new Promise<Blob>((resolve, reject) => {
+                mediaRecorder.onstop = () => {
+                    console.log('[Export] Recording stopped, chunks:', chunks.length);
+                    const mergedBlob = new Blob(chunks, { type: 'video/webm' });
+                    resolve(mergedBlob);
+                };
+
+                mediaRecorder.onerror = (event) => {
+                    console.error('[Export] MediaRecorder error:', event);
+                    reject(new Error('Recording failed'));
+                };
+            });
+
+            mediaRecorder.start();
+            videoElement.play();
+            audioElement.play();
+
+            setProgress(60);
+
+            // Stop recording after trimmed duration
+            setTimeout(() => {
+                videoElement.pause();
+                audioElement.pause();
+                mediaRecorder.stop();
+                setProgress(80);
+            }, trimmedDuration * 1000);
+
+            // Wait for recording to complete
+            const mergedBlob = await recordingPromise;
+            console.log('[Export] Merged blob size:', mergedBlob.size);
+
+            setProgress(90);
+
+            // Download the merged file
+            const downloadUrl = URL.createObjectURL(mergedBlob);
             const link = document.createElement('a');
-            link.href = videoData.url;
-            link.download = `recording_${sessionId}.${format}`;
+            link.href = downloadUrl;
+            link.download = `recording_${sessionId}_merged.webm`;
             document.body.appendChild(link);
             link.click();
             document.body.removeChild(link);
 
-            clearInterval(progressInterval);
+            // Cleanup
+            URL.revokeObjectURL(videoUrl);
+            URL.revokeObjectURL(audioUrl);
+            URL.revokeObjectURL(downloadUrl);
+
             setProgress(100);
             setStatus('success');
+
+            console.log('[Export] Export completed successfully!');
 
             // Reset after 3 seconds
             setTimeout(() => {
@@ -55,7 +161,7 @@ export default function ExportButton({ audioData, videoData, sessionId }: Export
             }, 3000);
 
         } catch (error) {
-            console.error('Export failed:', error);
+            console.error('[Export] Export failed:', error);
             setStatus('error');
             setTimeout(() => {
                 setStatus('idle');

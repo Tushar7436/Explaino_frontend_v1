@@ -74,12 +74,22 @@ export default function Timeline({ currentTime, duration, events, onSeek, isPlay
     // Calculate progress percentage
     const progressPercentage = duration > 0 ? (currentTime / duration) * 100 : 0;
 
+    // Calculate total recording duration from DOM events
+    const firstEvent = events[0];
+    const lastEvent = events[events.length - 1];
+    const recordingDuration = (firstEvent?.timestamp && lastEvent?.timestamp)
+        ? (lastEvent.timestamp - firstEvent.timestamp) / 1000
+        : duration;
+
+    // Calculate remaining time (countdown)
+    const remainingTime = Math.max(0, duration - currentTime);
+
     return (
         <div className="w-full space-y-3 px-6 py-4 bg-[var(--color-bg-secondary)] border-t border-[var(--color-border-primary)]">
             {/* Time Display */}
             <div className="flex items-center justify-between text-sm">
                 <span className="text-[var(--color-text-secondary)] font-mono">
-                    {formatTime(currentTime)}
+                    -{formatTime(remainingTime)}
                 </span>
                 <span className="text-[var(--color-text-tertiary)] font-mono">
                     {formatTime(duration)}
@@ -97,40 +107,100 @@ export default function Timeline({ currentTime, duration, events, onSeek, isPlay
             >
                 {/* Progress Bar */}
                 <div
-                    className="absolute top-0 left-0 h-full bg-gradient-to-r from-[var(--color-accent-primary)] to-[var(--color-accent-secondary)] rounded-lg transition-all duration-100"
+                    className="absolute top-0 left-0 h-full bg-gradient-to-r from-[var(--color-accent-primary)] to-[var(--color-accent-secondary)] rounded-lg"
                     style={{ width: `${progressPercentage}%` }}
                 />
 
                 {/* Event Markers */}
                 {events.map((event, idx) => {
-                    const eventTime = new Date(event.timestamp).getTime();
-                    const startTime = events[0] ? new Date(events[0].timestamp).getTime() : 0;
-                    const relativeTime = (eventTime - startTime) / 1000; // Convert to seconds
-                    const position = duration > 0 ? (relativeTime / duration) * 100 : 0;
+                    // Skip narrations event as it's not a single point in time usually
+                    if (event.type === 'narrations') return null;
 
-                    if (position < 0 || position > 100) return null;
+                    // Calculate event time relative to video start
+                    let relativeTime = 0;
+                    let isRange = false;
+                    let endTime = 0;
+
+                    if (event.t !== undefined) {
+                        relativeTime = event.t;
+                    } else if (event.start !== undefined && event.end !== undefined) {
+                        relativeTime = event.start;
+                        endTime = event.end;
+                        isRange = true;
+                    } else if (event.timestamp !== undefined) {
+                        const isAbsolute = event.timestamp > 1000000000000;
+                        if (!isAbsolute) {
+                            relativeTime = event.timestamp / 1000;
+                        } else {
+                            const firstEventTimestamp = events[0]?.timestamp || 0;
+                            relativeTime = (event.timestamp - firstEventTimestamp) / 1000;
+                        }
+                    }
+
+                    // Positioning
+                    const position = duration > 0 ? (relativeTime / duration) * 100 : 0;
+                    const endPosition = isRange && duration > 0 ? (endTime / duration) * 100 : position;
+
+                    if (position < 0 || position > 100 || !isFinite(position)) return null;
+
+                    // Check if active
+                    const isActive = isRange
+                        ? (currentTime >= relativeTime && currentTime <= endTime)
+                        : (currentTime >= relativeTime && currentTime <= relativeTime + 0.8);
+
+                    // Marker Tooltip Info
+                    const displayTime = formatTime(relativeTime);
+                    const label = event.type || event.action || 'Event';
 
                     return (
                         <div
                             key={idx}
-                            className="absolute top-0 bottom-0 w-0.5 bg-yellow-400 hover:bg-yellow-300 transition-colors group/marker"
-                            style={{ left: `${position}%` }}
-                            title={`${event.type} at ${formatTime(relativeTime)}`}
+                            className={`absolute top-0 bottom-0 transition-all duration-300 group/marker 
+                                ${isRange ? 'opacity-50' : ''}
+                                ${isActive
+                                    ? 'bg-yellow-300 shadow-lg'
+                                    : 'bg-yellow-400 hover:bg-yellow-300'
+                                }`}
+                            style={{
+                                left: `${position}%`,
+                                width: isRange ? `${endPosition - position}%` : (isActive ? '4px' : '2px'),
+                                zIndex: isActive ? 15 : 10,
+                                boxShadow: isActive ? '0 0 10px rgba(250, 204, 21, 0.8)' : 'none'
+                            }}
+                            title={`${label} at ${displayTime}`}
                         >
+                            {/* Animated pulse for active marker */}
+                            {isActive && (
+                                <div className="absolute inset-0 bg-yellow-300 animate-pulse" />
+                            )}
+
                             {/* Marker Tooltip */}
                             <div className="absolute bottom-full mb-2 left-1/2 -translate-x-1/2 opacity-0 group-hover/marker:opacity-100 transition-opacity pointer-events-none z-10">
                                 <div className="bg-[var(--color-bg-elevated)] border border-[var(--color-border-primary)] rounded-lg px-3 py-2 text-xs whitespace-nowrap shadow-lg">
-                                    <div className="font-semibold text-yellow-400">{event.type}</div>
-                                    <div className="text-[var(--color-text-tertiary)]">{formatTime(relativeTime)}</div>
+                                    <div className="font-semibold text-yellow-400">{label}</div>
+                                    <div className="text-[var(--color-text-secondary)]">Time: {displayTime}</div>
+                                    {isRange && <div className="text-[var(--color-text-secondary)]">Until: {formatTime(endTime)}</div>}
+                                    {event.target?.text && (
+                                        <div className="text-[var(--color-text-tertiary)] text-[10px] mt-1 max-w-[200px] truncate">
+                                            "{event.target.text}"
+                                        </div>
+                                    )}
                                 </div>
                             </div>
+
+                            {/* Event label that appears when active */}
+                            {isActive && !isRange && (
+                                <div className="absolute -top-8 left-1/2 -translate-x-1/2 bg-yellow-400 text-black px-2 py-1 rounded text-[10px] font-bold whitespace-nowrap shadow-lg animate-slide-up">
+                                    {label.toUpperCase()}
+                                </div>
+                            )}
                         </div>
                     );
                 })}
 
                 {/* Playhead */}
                 <div
-                    className="absolute top-0 bottom-0 w-1 bg-white rounded-full shadow-lg transition-all duration-100"
+                    className="absolute top-0 bottom-0 w-1 bg-white rounded-full shadow-lg"
                     style={{ left: `${progressPercentage}%`, transform: 'translateX(-50%)' }}
                 >
                     {/* Playhead Handle */}

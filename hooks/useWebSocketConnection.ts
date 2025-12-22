@@ -6,24 +6,42 @@ import { Socket } from 'socket.io-client';
 const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:3000';
 
 export interface EventTarget {
-    tag: string;
-    id: string | null;
-    classes: string[];
-    text: string;
-    selector: string;
-    bbox: {
+    tag?: string;
+    id?: string | null;
+    classes?: string[];
+    text?: string;
+    selector?: string;
+    bbox?: {
         x: number;
         y: number;
         width: number;
         height: number;
     };
-    attributes: Record<string, any>;
+    bounds?: { // Support both names
+        x: number;
+        y: number;
+        width: number;
+        height: number;
+    };
+    attributes?: Record<string, any>;
 }
 
 export interface Instruction {
     type: string;
-    target: EventTarget;
-    timestamp: number;
+    target?: EventTarget;
+    timestamp?: number; // MS since start or epoch
+    t?: number;         // Seconds relative to video (from guide)
+    start?: number;     // for displayEffect (seconds)
+    end?: number;       // for displayEffect (seconds)
+    style?: {           // for displayEffect
+        dimBackground?: boolean;
+        outline?: string;
+        zoom?: { enabled: boolean; scale: number };
+    };
+    data?: any[];       // for narrations type
+    action?: string;    // from guide
+    selector?: string;  // from guide (direct)
+    bounds?: any;       // from guide (direct)
     metadata?: {
         url?: string;
         viewport?: {
@@ -37,14 +55,18 @@ export interface Instruction {
 export interface VideoData {
     filename: string;
     url: string;
-    metadata: Record<string, any>;
+    metadata: {
+        url?: string;
+        viewport?: { width: number; height: number };
+        [key: string]: any;
+    };
     receivedAt: Date;
 }
 
 export interface AudioData {
     filename: string;
     url: string;
-    text: string;
+    text?: string;
     receivedAt: Date;
 }
 
@@ -144,16 +166,25 @@ export const useWebSocketConnection = (sessionId: string | null) => {
         });
 
         // 3. Audio event - Initial audio file
-        socket.on('audio', (data: { filename: string; path: string; text: string; timestamp: string }) => {
+        socket.on('audio', (data: { filename: string; path: string; text?: string; timestamp: string }) => {
             console.log('[Hook] 🔊 AUDIO EVENT RECEIVED:');
             console.log('[Hook] - Filename:', data.filename);
             console.log('[Hook] - Path:', data.path);
-            console.log('[Hook] - Full URL:', `${BACKEND_URL}${data.path}`);
+
+            // Logic for Path Handling from Guide:
+            // Check if it starts with http. If yes (Python processed), use as is. 
+            // If no (Raw fallback), prefix with Node server URL.
+            const fullUrl = data.path.startsWith('http')
+                ? data.path
+                : `${BACKEND_URL}${data.path}`;
+
+            console.log('[Hook] - Full URL:', fullUrl);
             console.log('[Hook] - Text:', data.text);
             console.log('[Hook] - Timestamp:', data.timestamp);
+
             const audioData = {
                 filename: data.filename,
-                url: `${BACKEND_URL}${data.path}`,
+                url: fullUrl,
                 text: data.text,
                 receivedAt: new Date(data.timestamp),
             };
@@ -163,13 +194,7 @@ export const useWebSocketConnection = (sessionId: string | null) => {
 
         // 4. Instructions event - AI-generated steps
         socket.on('instructions', (data: any) => {
-            console.log('[Hook] 📨 INSTRUCTION EVENT RECEIVED:');
-            console.log('[Hook] - Type:', data.type);
-            console.log('[Hook] - Target (full object):', data.target);
-            console.log('[Hook] - Target type:', typeof data.target);
-            console.log('[Hook] - Timestamp:', data.timestamp);
-            console.log('[Hook] - Metadata:', data.metadata);
-            console.log('[Hook] - Full data:', JSON.stringify(data, null, 2));
+            console.log('[Hook] 📨 INSTRUCTION EVENT RECEIVED:', data);
 
             // Check if it's an error instruction
             if (data.type === 'error') {
@@ -179,20 +204,38 @@ export const useWebSocketConnection = (sessionId: string | null) => {
                     details: data.metadata?.error,
                     timestamp: new Date(),
                 }]);
-            } else {
-                console.log('[Hook] ✅ REGULAR INSTRUCTION - Adding to list');
-                setInstructions(prev => {
-                    const newList = [...prev, {
-                        type: data.type,
-                        target: data.target,
-                        timestamp: data.timestamp,
-                        metadata: data.metadata,
-                    }];
-                    console.log('[Hook] - Total instructions now:', newList.length);
-                    saveToStorage(sessionId, 'instructions', newList);
-                    return newList;
-                });
+                return;
             }
+
+            // Standardize the instruction format based on the guide
+            let normalizedInstruction = { ...data };
+
+            // Map 't' to 'timestamp' if present (Direct Player Actions)
+            if (data.t !== undefined && data.timestamp === undefined) {
+                normalizedInstruction.timestamp = data.t * 1000; // Convert s to ms if needed? 
+                // Wait, most timestamps in the app are currently MS since epoch for events, 
+                // but 't' in the guide seems like video time (seconds).
+                // Let's keep it as is and handle conversion in overlay if it's video-relative.
+            }
+
+            // Map 'action' to 'type' if type is missing
+            if (!data.type && data.action) {
+                normalizedInstruction.type = data.action;
+            }
+
+            // Ensure bounds are mapped to target.bbox if it's a direct action
+            if (data.bounds && (!data.target || !data.target.bbox)) {
+                normalizedInstruction.target = normalizedInstruction.target || {};
+                normalizedInstruction.target.bbox = data.bounds;
+                normalizedInstruction.target.selector = data.selector;
+            }
+
+            console.log('[Hook] ✅ Adding normalized instruction:', normalizedInstruction);
+            setInstructions(prev => {
+                const newList = [...prev, normalizedInstruction];
+                saveToStorage(sessionId, 'instructions', newList);
+                return newList;
+            });
         });
 
         // 5. Error event - General errors

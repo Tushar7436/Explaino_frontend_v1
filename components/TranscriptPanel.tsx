@@ -1,10 +1,11 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { AudioData } from '@/hooks/useWebSocketConnection';
+import { AudioData, Instruction } from '@/hooks/useWebSocketConnection';
 
 interface TranscriptPanelProps {
     audioData: AudioData | null;
+    instructions: Instruction[];
     currentTime: number;
     onSeek?: (time: number) => void;
 }
@@ -15,31 +16,46 @@ interface TranscriptSegment {
     endTime: number;
 }
 
-export default function TranscriptPanel({ audioData, currentTime, onSeek }: TranscriptPanelProps) {
+export default function TranscriptPanel({ audioData, instructions, currentTime, onSeek }: TranscriptPanelProps) {
     const containerRef = useRef<HTMLDivElement>(null);
     const [searchQuery, setSearchQuery] = useState('');
     const [segments, setSegments] = useState<TranscriptSegment[]>([]);
 
-    // Parse transcript into segments (simplified - in production, use actual word-level timestamps)
+    // Parse transcript into segments
     useEffect(() => {
-        if (!audioData?.text) {
-            setSegments([]);
+        // Priority 1: Use 'narrations' instruction if available
+        const narrationsEvent = instructions.find(inst => inst.type === 'narrations');
+        if (narrationsEvent && narrationsEvent.data) {
+            console.log('[Transcript] Using AI Narrations Timeline');
+            const parsedSegments: TranscriptSegment[] = narrationsEvent.data.map((item: any) => ({
+                text: item.text,
+                startTime: item.start,
+                endTime: item.end,
+            }));
+            setSegments(parsedSegments);
             return;
         }
 
-        // Split transcript into sentences for demonstration
-        const sentences = audioData.text.match(/[^.!?]+[.!?]+/g) || [audioData.text];
-        const duration = 60; // Placeholder duration
-        const segmentDuration = duration / sentences.length;
+        // Priority 2: Fallback to basic sentence splitting of audioData.text
+        if (audioData?.text) {
+            console.log('[Transcript] Falling back to sentence splitting');
+            const sentences = audioData.text.match(/[^.!?]+[.!?]+/g) || [audioData.text];
+            const duration = 60; // We don't have duration here easily, but SyncedVideoPlayer has it.
+            // For now, simple spacing.
+            const segmentDuration = duration / sentences.length;
 
-        const parsedSegments: TranscriptSegment[] = sentences.map((sentence, idx) => ({
-            text: sentence.trim(),
-            startTime: idx * segmentDuration,
-            endTime: (idx + 1) * segmentDuration,
-        }));
+            const parsedSegments: TranscriptSegment[] = sentences.map((sentence, idx) => ({
+                text: sentence.trim(),
+                startTime: idx * segmentDuration,
+                endTime: (idx + 1) * segmentDuration,
+            }));
 
-        setSegments(parsedSegments);
-    }, [audioData]);
+            setSegments(parsedSegments);
+            return;
+        }
+
+        setSegments([]);
+    }, [audioData, instructions]);
 
     // Auto-scroll to current segment
     useEffect(() => {

@@ -147,6 +147,64 @@ export default function VideoPlayerLayout({
         setCurrentTime(time);
     };
 
+    // Video zoom and pan based on active event
+    useEffect(() => {
+        const video = videoRef.current;
+        if (!video || !videoData || instructions.length === 0) return;
+
+        const actualCurrentTime = currentTime + TRIM_START;
+
+        // Find active event for zoom
+        const activeEvent = instructions.find(event => {
+            // Priority 1: displayEffect with zoom
+            if (event.type === 'displayEffect' && event.start !== undefined && event.end !== undefined) {
+                return actualCurrentTime >= event.start && actualCurrentTime <= event.end && event.style?.zoom?.enabled;
+            }
+            
+            // Priority 2: Standard events (zoom for a short duration after event)
+            if (event.timestamp !== undefined) {
+                const isAbsolute = event.timestamp > 1000000000000;
+                const eventTime = isAbsolute ? event.timestamp : event.timestamp;
+                const actualTimeMs = actualCurrentTime * 1000;
+                const effectEnd = eventTime + 1500; 
+                return actualTimeMs >= eventTime && actualTimeMs <= effectEnd;
+            }
+            
+            if (event.t !== undefined) {
+                const effectEnd = event.t + 1.5;
+                return actualCurrentTime >= event.t && actualCurrentTime <= effectEnd;
+            }
+
+            return false;
+        });
+
+        const bbox = activeEvent?.target?.bbox || activeEvent?.target?.bounds;
+
+        if (activeEvent && bbox) {
+            const viewport = videoData.metadata?.viewport || { width: 1920, height: 1080 };
+            
+            // Calculate zoom and pan
+            const centerX = (bbox.x + bbox.width / 2) / viewport.width;
+            const centerY = (bbox.y + bbox.height / 2) / viewport.height;
+
+            // Zoom level: use AI provided scale OR default to 1.3x
+            const scale = activeEvent.type === 'displayEffect' && activeEvent.style?.zoom?.enabled
+                ? activeEvent.style.zoom.scale
+                : 1.3;
+
+            // Calculate translation to center the event
+            const translateX = (0.5 - centerX) * 100 * scale;
+            const translateY = (0.5 - centerY) * 100 * scale;
+
+            video.style.transform = `scale(${scale}) translate(${translateX}%, ${translateY}%)`;
+            video.style.transition = 'transform 0.6s cubic-bezier(0.4, 0, 0.2, 1)';
+        } else {
+            // Reset zoom
+            video.style.transform = 'scale(1) translate(0, 0)';
+            video.style.transition = 'transform 0.6s cubic-bezier(0.4, 0, 0.2, 1)';
+        }
+    }, [currentTime, instructions, videoData]);
+
     // Volume handler
     const handleVolumeChange = (newVolume: number) => {
         if (audioRef.current) {
@@ -341,6 +399,7 @@ export default function VideoPlayerLayout({
                 <div className="w-96 shrink-0">
                     <TranscriptPanel
                         audioData={audioData}
+                        instructions={instructions}
                         currentTime={currentTime}
                         onSeek={handleSeek}
                     />
