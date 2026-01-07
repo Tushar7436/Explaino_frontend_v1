@@ -1,0 +1,1 @@
+export { MericodSaasRecord } from "./MericodSaasRecord";

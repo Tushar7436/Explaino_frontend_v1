@@ -1,0 +1,31 @@
+name: explaino
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Login to GitLab Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: registry.gitlab.com
+          username: ${{ secrets.GITLAB_USERNAME }}
+          password: ${{ secrets.GITLAB_TOKEN }}
+
+      - name: Build, tag, and push Docker image to GitLab
+        env:
+          GITLAB_REGISTRY: registry.gitlab.com
+          GITLAB_PROJECT: ${{ secrets.GITLAB_USERNAME }}/deploy
+          IMAGE_TAG: ${{ github.sha }}
+        run: |
+          docker build -t $GITLAB_REGISTRY/$GITLAB_PROJECT/explaino:$IMAGE_TAG \
+                       -t $GITLAB_REGISTRY/$GITLAB_PROJECT/explaino:latest \
+                       .
+          docker push $GITLAB_REGISTRY/$GITLAB_PROJECT/explaino:$IMAGE_TAG
+          docker push $GITLAB_REGISTRY/$GITLAB_PROJECT/explaino:latest
