@@ -1,5 +1,11 @@
 import React from 'react';
-import { Sparkles, X } from 'lucide-react';
+import { Sparkles, X, MoreHorizontal } from 'lucide-react';
+
+interface WordTiming {
+    word: string;
+    start: number;
+    end: number;
+}
 
 interface Narration {
     windowIndex?: number;
@@ -7,6 +13,7 @@ interface Narration {
     end: number;
     text: string;
     musicStyle?: string;
+    words?: WordTiming[]; // Word-level timestamps from TTS
 }
 
 interface TranscriptionSectionProps {
@@ -39,100 +46,171 @@ export const TranscriptionSection: React.FC<TranscriptionSectionProps> = ({
 
     return (
         <div className="w-80 bg-[#252538] border-r border-[#2a2a3e] flex flex-col animate-slide-in">
-            {/* Header */}
-            <div className="p-4 border-b border-[#2a2a3e] flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                    <span className="text-lg">📝</span>
-                    <h2 className="text-white font-semibold text-sm">Script</h2>
-                </div>
-                <div className="flex items-center gap-2">
-                    {/* Generate Script Button */}
+            {/* Toolbar - Generate Speech & AI Rewrite */}
+            <div className="px-4 py-3 border-b border-[#2a2a3e] flex items-center gap-2">
+                <div className="flex-1 min-w-0 flex items-center gap-2">
+                    {/* Generate Speech Button */}
                     <button
                         onClick={onGenerateScript}
                         disabled={isGenerating || hasProcessedAudio}
-                        className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all duration-200 ${isGenerating
+                        className={`h-10 flex-1 min-w-0 inline-flex items-center justify-center gap-2 px-3 rounded-lg text-sm font-medium transition-all duration-200 ${
+                            isGenerating
                                 ? 'bg-[#4a4a5e] text-gray-400 cursor-not-allowed'
                                 : hasProcessedAudio
                                     ? 'bg-green-600 text-white cursor-not-allowed'
                                     : 'bg-indigo-500 hover:bg-indigo-600 text-white'
-                            }`}
+                        }`}
                     >
-                        {isGenerating ? (
-                            <>
-                                <div className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                                <span>Generating...</span>
-                            </>
-                        ) : hasProcessedAudio ? (
-                            <>
-                                <span>✅</span>
-                                <span>Generated</span>
-                            </>
-                        ) : (
-                            <>
-                                <Sparkles size={12} />
-                                <span>Generate Speech</span>
-                            </>
-                        )}
+                    {isGenerating ? (
+                        <>
+                            <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                            <span className="truncate">Generating...</span>
+                        </>
+                    ) : hasProcessedAudio ? (
+                        <>
+                            <span>✅</span>
+                            <span className="truncate">Generated</span>
+                        </>
+                    ) : (
+                        <>
+                            <Sparkles size={15} />
+                            <span className="truncate">Generate Speech</span>
+                        </>
+                    )}
                     </button>
 
-                    {/* Close Button */}
-                    <button
-                        onClick={onClose}
-                        className="p-1 text-gray-400 hover:text-white hover:bg-[#3b3b50] rounded-lg transition-all duration-200"
-                    >
-                        <X size={16} />
+                    {/* AI Rewrite Button - Removed dropdown for now */}
+                    <button className="h-10 shrink-0 inline-flex items-center justify-center gap-2 px-3 bg-[#3b3b50] hover:bg-[#4a4a5e] text-white rounded-lg text-sm font-medium transition-all duration-200 whitespace-nowrap">
+                        <Sparkles size={15} />
+                        <span>AI Rewrite</span>
+                        {/* <ChevronDown size={14} /> */}
                     </button>
+
+                    {/* Add Button - Commented out for now */}
+                    {/* <button className="p-2 bg-[#3b3b50] hover:bg-[#4a4a5e] text-white rounded-lg transition-all duration-200">
+                        <Plus size={18} />
+                    </button> */}
                 </div>
+
+                <button
+                    onClick={onClose}
+                    className="h-10 w-10 inline-flex items-center justify-center shrink-0 text-gray-400 hover:text-white hover:bg-[#3b3b50] rounded-lg transition-all duration-200"
+                    aria-label="Close script"
+                    title="Close"
+                >
+                    <X size={15} />
+                </button>
             </div>
 
             {/* Content */}
-            <div className="flex-1 overflow-y-auto p-4 space-y-6">
-                {narrations.length === 0 ? (
-                    <div className="text-center text-gray-500 py-8">
-                        <p className="text-sm">No script content yet.</p>
-                        <p className="text-xs mt-2">Process the video to generate narrations.</p>
-                    </div>
-                ) : (
-                    narrations.map((narration, idx) => (
-                        <div
-                            key={idx}
-                            className={`relative transition-all duration-200 ${activeIndex === idx ? 'scale-[1.02]' : ''
-                                }`}
-                        >
-                            {/* Section Number */}
-                            <div className="absolute -left-2 top-0 text-gray-600 text-xs font-medium">
-                                {idx + 1}
-                            </div>
-
-                            {/* Sync Point Badge */}
-                            <div className="flex items-center gap-2 mb-2">
-                                <button
-                                    onClick={() => onSyncPointClick(narration.start)}
-                                    className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium transition-all duration-200 ${activeIndex === idx
-                                            ? 'bg-indigo-500 text-white'
-                                            : 'bg-indigo-500/20 text-indigo-300 hover:bg-indigo-500/40'
-                                        }`}
-                                >
-                                    <span className="w-4 h-4 rounded-full bg-indigo-500/50 flex items-center justify-center text-[10px]">
-                                        👤
-                                    </span>
-                                    Sync Point {idx + 1}
-                                </button>
-                                <span className="text-xs text-gray-500">
-                                    {formatTime(narration.start)}
-                                </span>
-                            </div>
-
-                            {/* Narration Text */}
-                            <p className={`text-sm leading-relaxed pl-2 border-l-2 transition-all duration-200 ${activeIndex === idx
-                                    ? 'text-white border-indigo-500'
-                                    : 'text-gray-300 border-gray-700'
-                                }`}>
-                                {narration.text}
-                            </p>
+            <div className="flex-1 overflow-y-auto px-3 py-3 space-y-3">
+                {/* Intro Section */}
+                <div className="rounded-xl border border-[#2a2a3e] bg-[#1e1e2e]/30 overflow-hidden transition-all duration-200 hover:border-[#3b3b50] hover:bg-[#1e1e2e]/40 hover:-translate-y-[1px]">
+                    <div className="px-4 py-3 flex items-center justify-between">
+                        <div className="flex items-center gap-3">
+                            <span className="text-gray-500 text-xs font-medium">1</span>
+                            <span className="text-white text-sm font-semibold tracking-tight">Intro</span>
                         </div>
-                    ))
-                )}
+                        <button className="h-8 w-8 inline-flex items-center justify-center text-gray-400 hover:text-white hover:bg-[#3b3b50] rounded-lg transition-all duration-200">
+                            <MoreHorizontal size={16} />
+                        </button>
+                    </div>
+                    <div className="px-4 pb-4 text-gray-500 text-[12px]">
+                        Coming soon...
+                    </div>
+                </div>
+
+                {/* Video Section */}
+                <div className="rounded-xl border border-[#2a2a3e] bg-[#1e1e2e]/30 overflow-hidden transition-all duration-200 hover:border-[#3b3b50] hover:bg-[#1e1e2e]/40">
+                    <div className="px-4 py-3 flex items-center justify-between">
+                        <div className="flex items-center gap-3">
+                            <span className="text-gray-500 text-xs font-medium">2</span>
+                            <span className="text-white text-sm font-semibold tracking-tight">Video</span>
+                        </div>
+                        <button className="h-8 w-8 inline-flex items-center justify-center text-gray-400 hover:text-white hover:bg-[#3b3b50] rounded-lg transition-all duration-200">
+                            <MoreHorizontal size={16} />
+                        </button>
+                    </div>
+
+                    {/* Video Content - Narrations/Script */}
+                    <div className="px-4 pb-4">
+                        {narrations.length === 0 ? (
+                            <div className="text-center text-gray-500 py-4">
+                                <p className="text-xs">No script content yet.</p>
+                                <p className="text-xs mt-2">Process the video to generate narrations.</p>
+                            </div>
+                        ) : (
+                            <div className="text-[13px] leading-6 text-gray-300 tracking-[0.01em] antialiased">
+                                {narrations.map((narration, idx) => {
+                                    const isActiveNarration = activeIndex === idx;
+                                    
+                                    return (
+                                        <span key={idx}>
+                                            {/* Sync Point Badge - Inline (Clueso-like: compact, subtle) */}
+                                            <button
+                                                onClick={() => onSyncPointClick(narration.start)}
+                                                className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md text-[11px] font-medium leading-none align-middle transition-all duration-200 mr-2 mb-1 hover:-translate-y-[0.5px] active:translate-y-0 ${
+                                                    isActiveNarration
+                                                        ? 'bg-indigo-500 text-white ring-1 ring-white/10'
+                                                        : 'bg-indigo-500/15 text-indigo-200 hover:bg-indigo-500/25 ring-1 ring-white/5'
+                                                }`}
+                                            >
+                                                <span className="w-1.5 h-1.5 rounded-full bg-current opacity-90" />
+                                                <span>Sync Point {idx + 1}</span>
+                                            </button>
+
+                                            {/* Text with word-level highlighting */}
+                                            {narration.words && narration.words.length > 0 ? (
+                                                // Render with word-level highlighting
+                                                narration.words.map((wordData, wordIdx) => {
+                                                    const isCurrentWord = isActiveNarration && 
+                                                        currentTime >= wordData.start && 
+                                                        currentTime < wordData.end;
+                                                    
+                                                    return (
+                                                        <span
+                                                            key={wordIdx}
+                                                            className={`transition-all duration-150 ${
+                                                                isCurrentWord
+                                                                    ? 'text-white font-semibold bg-indigo-500/20 px-1 rounded'
+                                                                    : isActiveNarration
+                                                                        ? 'text-white'
+                                                                        : 'text-gray-400'
+                                                            }`}
+                                                        >
+                                                            {wordData.word}{' '}
+                                                        </span>
+                                                    );
+                                                })
+                                            ) : (
+                                                // Fallback: render full text without word highlighting
+                                                <span className={`transition-colors duration-200 ${isActiveNarration ? 'text-white' : 'text-gray-400'}`}>
+                                                    {narration.text}{' '}
+                                                </span>
+                                            )}
+                                        </span>
+                                    );
+                                })}
+                            </div>
+                        )}
+                    </div>
+                </div>
+
+                {/* Outro Section */}
+                <div className="rounded-xl border border-[#2a2a3e] bg-[#1e1e2e]/30 overflow-hidden transition-all duration-200 hover:border-[#3b3b50] hover:bg-[#1e1e2e]/40 hover:-translate-y-[1px]">
+                    <div className="px-4 py-3 flex items-center justify-between">
+                        <div className="flex items-center gap-3">
+                            <span className="text-gray-500 text-xs font-medium">3</span>
+                            <span className="text-white text-sm font-semibold tracking-tight">Outro</span>
+                        </div>
+                        <button className="h-8 w-8 inline-flex items-center justify-center text-gray-400 hover:text-white hover:bg-[#3b3b50] rounded-lg transition-all duration-200">
+                            <MoreHorizontal size={16} />
+                        </button>
+                    </div>
+                    <div className="px-4 pb-4 text-gray-500 text-[12px]">
+                        Coming soon...
+                    </div>
+                </div>
             </div>
 
             {/* Footer Info */}
@@ -146,12 +224,5 @@ export const TranscriptionSection: React.FC<TranscriptionSectionProps> = ({
         </div>
     );
 };
-
-// Helper function to format time
-function formatTime(seconds: number): string {
-    const mins = Math.floor(seconds / 60);
-    const secs = Math.floor(seconds % 60);
-    return `${mins}:${secs.toString().padStart(2, '0')}`;
-}
 
 export default TranscriptionSection;

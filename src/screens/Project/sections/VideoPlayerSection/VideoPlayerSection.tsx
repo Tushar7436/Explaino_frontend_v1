@@ -19,25 +19,28 @@ export const VideoLayer: React.FC<VideoLayerProps> = ({
     return (
         <div
             ref={videoLayerRef}
-            className="w-full h-full"
             style={{
+                width: '100%',
+                height: '100%',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
                 // CRITICAL: Camera-zoom requires transform-origin at center
-                // This ensures the frame stays static while content zooms
                 transformOrigin: 'center center',
                 willChange: 'transform',
                 // Smooth transform transitions
                 transition: 'transform 0.05s linear',
-                // Initial scale creates the margin effect (94% size = 3% margin on each side)
                 // This will be overridden by the zoom transform when effects are active
-                transform: 'scale(0.94)',
+                transform: 'scale(1)',
             }}
         >
             {videoUrl ? (
                 <video
                     ref={videoRef}
-                    className="w-full h-full object-contain"
+                    className="max-w-full max-h-full object-contain"
                     playsInline
                     preload="auto"
+                    muted
                 >
                     <source src={videoUrl} type="video/webm" />
                 </video>
@@ -91,10 +94,11 @@ export const VideoControls: React.FC<VideoControlsProps> = ({
     const progressBarRef = useRef<HTMLDivElement>(null);
 
     const formatTime = (time: number): string => {
-        if (!time || isNaN(time) || !isFinite(time)) return '0:00';
-        const mins = Math.floor(time / 60);
+        if (!time || isNaN(time) || !isFinite(time)) return '00 : 00 : 00';
+        const hours = Math.floor(time / 3600);
+        const mins = Math.floor((time % 3600) / 60);
         const secs = Math.floor(time % 60);
-        return `${mins}:${secs.toString().padStart(2, '0')}`;
+        return `${hours.toString().padStart(2, '0')} : ${mins.toString().padStart(2, '0')} : ${secs.toString().padStart(2, '0')}`;
     };
 
     const handleProgressClick = (e: React.MouseEvent<HTMLDivElement>) => {
@@ -116,7 +120,7 @@ export const VideoControls: React.FC<VideoControlsProps> = ({
     const progressPercent = duration > 0 ? (currentTime / duration) * 100 : 0;
 
     return (
-        <div className="px-6 py-3">
+        <>
             {/* Hidden Audio Elements */}
             {audioUrl && (
                 <audio ref={audioRef} preload="auto" style={{ display: 'none' }}>
@@ -129,87 +133,40 @@ export const VideoControls: React.FC<VideoControlsProps> = ({
                 </audio>
             )}
 
-            {/* Progress Bar */}
-            <div
-                ref={progressBarRef}
-                onClick={handleProgressClick}
-                className="w-full h-1.5 bg-[#3b3b50] rounded-full cursor-pointer group mb-3 hover:h-2 transition-all duration-200"
-            >
-                <div
-                    className="h-full bg-indigo-500 rounded-full relative transition-all duration-100"
-                    style={{ width: `${progressPercent}%` }}
+            {/* Simple Playback Controls - Clueso Style */}
+            <div className="flex items-center gap-3">
+                {/* Previous/Skip Back */}
+                <button
+                    onClick={skipBack}
+                    className="w-9 h-9 flex items-center justify-center text-white hover:text-gray-300 bg-[#2a2a3e] hover:bg-[#3b3b50] rounded-full transition-all duration-200"
+                    title="Skip back 10s"
                 >
-                    {/* Playhead */}
-                    <div className="absolute right-0 top-1/2 -translate-y-1/2 w-3 h-3 bg-white rounded-full shadow-lg opacity-0 group-hover:opacity-100 transition-opacity duration-200" />
+                    <SkipBack size={16} />
+                </button>
+
+                {/* Play/Pause - Pink/Magenta like Clueso */}
+                <button
+                    onClick={onPlayPause}
+                    className="w-10 h-10 flex items-center justify-center bg-[#ec4899] hover:bg-[#db2777] text-white rounded-full transition-all duration-200 shadow-lg"
+                >
+                    {isPlaying ? <Pause size={18} fill="white" /> : <Play size={18} fill="white" className="ml-0.5" />}
+                </button>
+
+                {/* Next/Skip Forward */}
+                <button
+                    onClick={skipForward}
+                    className="w-9 h-9 flex items-center justify-center text-white hover:text-gray-300 bg-[#2a2a3e] hover:bg-[#3b3b50] rounded-full transition-all duration-200"
+                    title="Skip forward 10s"
+                >
+                    <SkipForward size={16} />
+                </button>
+
+                {/* Time Display - Clueso Format */}
+                <div className="text-white text-sm font-medium ml-2">
+                    {formatTime(currentTime)} <span className="text-gray-500">/</span> {formatTime(duration)}
                 </div>
             </div>
-
-            {/* Control Buttons */}
-            <div className="flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                    {/* Skip Back */}
-                    <button
-                        onClick={skipBack}
-                        className="p-2 text-gray-400 hover:text-white hover:bg-[#3b3b50] rounded-full transition-all duration-200"
-                        title="Skip back 10s"
-                    >
-                        <SkipBack size={18} />
-                    </button>
-
-                    {/* Play/Pause */}
-                    <button
-                        onClick={onPlayPause}
-                        className="p-3 bg-[#3b3b50] hover:bg-[#4a4a5e] text-white rounded-full transition-all duration-200"
-                    >
-                        {isPlaying ? <Pause size={20} /> : <Play size={20} className="ml-0.5" />}
-                    </button>
-
-                    {/* Skip Forward */}
-                    <button
-                        onClick={skipForward}
-                        className="p-2 text-gray-400 hover:text-white hover:bg-[#3b3b50] rounded-full transition-all duration-200"
-                        title="Skip forward 10s"
-                    >
-                        <SkipForward size={18} />
-                    </button>
-
-                    {/* Time Display */}
-                    <div className="text-gray-300 text-sm font-mono ml-2">
-                        {formatTime(currentTime)} / {formatTime(duration)}
-                    </div>
-                </div>
-
-                <div className="flex items-center gap-2">
-                    {/* Volume Control */}
-                    <div className="flex items-center gap-2 group">
-                        <button
-                            onClick={onToggleMute}
-                            className="p-2 text-gray-400 hover:text-white hover:bg-[#3b3b50] rounded-full transition-all duration-200"
-                        >
-                            {isMuted || volume === 0 ? <VolumeX size={18} /> : <Volume2 size={18} />}
-                        </button>
-                        <input
-                            type="range"
-                            min="0"
-                            max="1"
-                            step="0.05"
-                            value={isMuted ? 0 : volume}
-                            onChange={(e) => onVolumeChange(parseFloat(e.target.value))}
-                            className="w-16 h-1 bg-[#3b3b50] rounded-full appearance-none cursor-pointer
-                                [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-3 [&::-webkit-slider-thumb]:h-3 [&::-webkit-slider-thumb]:bg-white [&::-webkit-slider-thumb]:rounded-full"
-                        />
-                    </div>
-
-                    {/* Fullscreen */}
-                    <button
-                        className="p-2 text-gray-400 hover:text-white hover:bg-[#3b3b50] rounded-full transition-all duration-200"
-                        title="Fullscreen"
-                    >
-                        <Maximize2 size={18} />
-                    </button>
-                </div>
-            </div>
-        </div>
+        </>
     );
 };
 

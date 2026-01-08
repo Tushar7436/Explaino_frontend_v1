@@ -1,7 +1,9 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Palette, Plus, RectangleHorizontal } from 'lucide-react';
+import { BackgroundPanel } from './BackgroundPanel';
+import { AspectRatioDropdown, AspectRatio } from './AspectRatioDropdown';
 
-export type AspectRatio = '16:9' | '9:16' | '1:1' | '4:3';
+export type { AspectRatio };
 
 interface MainCanvasSectionProps {
     children: React.ReactNode;
@@ -10,13 +12,18 @@ interface MainCanvasSectionProps {
     backgroundColor: string;
     onAspectRatioChange: (ratio: AspectRatio) => void;
     onBackgroundColorChange: (color: string) => void;
+    videoWidth?: number;
+    videoHeight?: number;
 }
 
-const aspectRatioValues: Record<AspectRatio, string> = {
+const aspectRatioValues: Record<string, string> = {
     '16:9': '16 / 9',
     '9:16': '9 / 16',
     '1:1': '1 / 1',
     '4:3': '4 / 3',
+    '3:4': '3 / 4',
+    '4:5': '4 / 5',
+    '5:4': '5 / 4',
 };
 
 export const MainCanvasSection: React.FC<MainCanvasSectionProps> = ({
@@ -25,127 +32,146 @@ export const MainCanvasSection: React.FC<MainCanvasSectionProps> = ({
     aspectRatio,
     backgroundColor,
     onAspectRatioChange,
-    onBackgroundColorChange
+    onBackgroundColorChange,
+    videoWidth,
+    videoHeight
 }) => {
-    const aspectRatioOptions: AspectRatio[] = ['16:9', '9:16', '1:1', '4:3'];
+    const [isBackgroundPanelOpen, setIsBackgroundPanelOpen] = useState(false);
 
-    const colorPresets = [
-        '#1a1625', // Dark purple
-        '#000000', // Black
-        '#1e3a5f', // Dark blue
-        '#2d3748', // Gray
-        '#3c1361', // Purple
-        '#0f172a', // Slate
-        '#4338ca', // Indigo
-        '#7c3aed', // Violet
-        '#6b8e6b', // Olive green (like reference)
-    ];
+    // Background canvas aspect ratio: prefer actual video dimensions; fallback to chosen preset
+    const getBackgroundAspectRatio = (): string => {
+        if (videoWidth && videoHeight) {
+            return `${videoWidth} / ${videoHeight}`;
+        }
+        return aspectRatioValues[aspectRatio] || '16 / 9';
+    };
 
     return (
         <div className="flex-1 flex flex-col bg-[#1e1e2e] overflow-hidden">
-            {/* Toolbar */}
-            <div className="h-12 border-b border-[#2a2a3e] flex items-center justify-center gap-4 px-4 flex-shrink-0">
-                {/* Background Color Picker */}
+            {/* Background Panel */}
+            <BackgroundPanel
+                isOpen={isBackgroundPanelOpen}
+                onClose={() => setIsBackgroundPanelOpen(false)}
+                currentColor={backgroundColor}
+                onColorChange={onBackgroundColorChange}
+            />
+
+            {/* Canvas Controls Toolbar - Above the canvas */}
+            <div className="h-12 flex items-center justify-center border-b border-[#2a2a3e]/50 bg-[#1e1e2e] flex-shrink-0">
                 <div className="flex items-center gap-2">
-                    <div className="relative group">
-                        <button className="flex items-center gap-2 px-3 py-1.5 bg-[#3b3b50] hover:bg-[#4a4a5e] rounded-lg transition-all duration-200">
-                            <div
-                                className="w-4 h-4 rounded border border-white/20"
-                                style={{ backgroundColor }}
-                            />
-                            <span className="text-white text-xs font-medium">Background</span>
-                            <Palette size={14} className="text-gray-400" />
-                        </button>
+                    {/* Background Button */}
+                    <button 
+                        onClick={() => setIsBackgroundPanelOpen(true)}
+                        className="flex items-center gap-2 px-3 py-2 bg-[#3b3b50] hover:bg-[#4a4a5e] rounded-lg transition-all duration-200"
+                    >
+                        <div
+                            className="w-5 h-5 rounded-full border border-white/20"
+                            style={{ backgroundColor }}
+                        />
+                        <span className="text-white text-sm font-medium">Background</span>
+                    </button>
 
-                        {/* Color Picker Dropdown */}
-                        <div className="absolute top-full left-0 mt-2 p-2 bg-[#2a2a3e] rounded-lg shadow-xl border border-[#3b3b50] hidden group-hover:block z-10">
-                            <div className="grid grid-cols-3 gap-1">
-                                {colorPresets.map((color) => (
-                                    <button
-                                        key={color}
-                                        onClick={() => onBackgroundColorChange(color)}
-                                        className={`w-6 h-6 rounded border-2 transition-all duration-200 ${backgroundColor === color
-                                            ? 'border-indigo-500 scale-110'
-                                            : 'border-transparent hover:border-white/50'
-                                            }`}
-                                        style={{ backgroundColor: color }}
-                                    />
-                                ))}
-                            </div>
-                            {/* Custom Color Input */}
-                            <input
-                                type="color"
-                                value={backgroundColor}
-                                onChange={(e) => onBackgroundColorChange(e.target.value)}
-                                className="w-full h-6 mt-2 rounded cursor-pointer"
-                            />
-                        </div>
-                    </div>
+                    {/* Aspect Ratio Dropdown */}
+                    <AspectRatioDropdown
+                        currentRatio={aspectRatio}
+                        onRatioChange={onAspectRatioChange}
+                        videoWidth={videoWidth}
+                        videoHeight={videoHeight}
+                    />
+
+                    {/* Insert Button */}
+                    <button className="flex items-center gap-2 px-3 py-2 bg-[#3b3b50] hover:bg-[#4a4a5e] text-white rounded-lg text-sm font-medium transition-all duration-200">
+                        <Plus size={16} />
+                        <span>Insert</span>
+                    </button>
                 </div>
-
-                {/* Aspect Ratio Selector */}
-                <div className="flex items-center gap-1 bg-[#252538] rounded-lg p-1">
-                    {aspectRatioOptions.map((ratio) => (
-                        <button
-                            key={ratio}
-                            onClick={() => onAspectRatioChange(ratio)}
-                            className={`flex items-center gap-1.5 px-3 py-1 rounded text-xs font-medium transition-all duration-200 ${aspectRatio === ratio
-                                ? 'bg-indigo-500 text-white'
-                                : 'text-gray-400 hover:text-white hover:bg-[#3b3b50]'
-                                }`}
-                        >
-                            <RectangleHorizontal size={12} className={ratio === '9:16' ? 'rotate-90' : ''} />
-                            <span>{ratio}</span>
-                        </button>
-                    ))}
-                </div>
-
-                {/* Insert Button */}
-                <button className="flex items-center gap-2 px-3 py-1.5 bg-[#3b3b50] hover:bg-[#4a4a5e] text-white rounded-lg text-xs font-medium transition-all duration-200">
-                    <Plus size={14} />
-                    <span>Insert</span>
-                </button>
             </div>
 
-            {/* Canvas Area - This is the viewing stage */}
-            <div className="flex-1 flex items-center justify-center p-6 overflow-hidden">
-                {/* 
-                    LAYER 1: Background Stage (STATIC)
-                    This is the "purple stage" that never moves.
-                    overflow:hidden HERE clips the video when it expands beyond the background bounds.
-                */}
+            {/* Main Canvas Area - Video Display */}
+            <div className="flex-1 flex items-center justify-center overflow-hidden">
+                {/* Background Canvas - Sized to SELECTED aspect ratio, centered with margins */}
                 <div
-                    className="relative overflow-hidden transition-colors duration-300 rounded-md"
+                    className="relative transition-all duration-300"
                     style={{
                         backgroundColor,
-                        aspectRatio: aspectRatioValues[aspectRatio],
-                        maxWidth: aspectRatio === '9:16' ? '608px' : '1920px',
+                        aspectRatio: getBackgroundAspectRatio(),
+                        width: 'auto',
+                        height: '100%',
+                        maxWidth: '100%',
                         maxHeight: '100%',
-                        width: '100%',
+                        borderRadius: '8px',
+                        boxShadow: '0 20px 60px rgba(0, 0, 0, 0.5)',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        overflow: 'hidden',
                     }}
                 >
-                    {/* 
-                        LAYER 2: Video Container (TRANSFORMABLE)
-                        This container fills the entire background.
-                        The video inside starts at 94% size but CAN EXPAND to 100%+ when scaled.
-                        The transform on VideoLayer handles both initial size and zoom.
-                    */}
-                    <div className="absolute inset-0 flex items-center justify-center">
-                        {/* 
-                            LAYER 3: Video Content (receives transform via ref)
-                            Initial scale is handled by VideoLayer transform.
-                            When zooming, it expands and the gap becomes zero.
-                        */}
-                        <div className="w-full h-full overflow-hidden">
-                            {children}
-                        </div>
+                    {/* Video scales to fit inside with 85% sizing to show background border */}
+                    <div style={{ maxWidth: '85%', maxHeight: '85%', width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                        {children}
                     </div>
                 </div>
             </div>
 
-            {/* Controls Section - BELOW the canvas, separate UI layer */}
-            <div className="flex-shrink-0 border-t border-[#2a2a3e] bg-[#252538]">
-                {controls}
+            {/* Timeline Section - Like Clueso */}
+            <div className="flex-shrink-0 border-t border-[#2a2a3e] bg-[#0d0d15]" style={{ height: '260px' }}>
+                {/* Timeline Tools and Controls */}
+                <div className="h-full flex flex-col">
+                    {/* Timeline Toolbar */}
+                    <div className="h-12 flex items-center justify-between px-4 border-b border-[#2a2a3e] bg-[#1a1a2e]">
+                        {/* Left Side - Split and Add Clip */}
+                        <div className="flex items-center gap-2">
+                            <button className="flex items-center gap-2 px-3 py-1.5 text-white hover:bg-[#2a2a3e] rounded text-sm transition-all duration-200">
+                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14.121 14.121L19 19m-7-7l7-7m-7 7l-2.879 2.879M12 12L9.121 9.121m0 5.758a3 3 0 10-4.243 4.243 3 3 0 004.243-4.243zm0-5.758a3 3 0 10-4.243-4.243 3 3 0 004.243 4.243z" />
+                                </svg>
+                                <span>Split</span>
+                            </button>
+                            <button className="flex items-center gap-2 px-3 py-1.5 text-white hover:bg-[#2a2a3e] rounded text-sm transition-all duration-200">
+                                <Plus size={14} />
+                                <span>Add Clip</span>
+                            </button>
+                        </div>
+
+                        {/* Center - Playback Controls */}
+                        <div className="flex items-center">
+                            {controls}
+                        </div>
+
+                        {/* Right Side - Zoom Control */}
+                        <div className="flex items-center gap-3">
+                            <button className="p-1.5 text-gray-400 hover:text-white hover:bg-[#2a2a3e] rounded transition-all duration-200">
+                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0zM13 10H7" />
+                                </svg>
+                            </button>
+                            <input 
+                                type="range" 
+                                min="10" 
+                                max="200" 
+                                defaultValue="50"
+                                className="w-24 h-1 bg-[#2a2a3e] rounded-lg appearance-none cursor-pointer"
+                                style={{
+                                    background: 'linear-gradient(to right, #ec4899 0%, #ec4899 50%, #2a2a3e 50%, #2a2a3e 100%)'
+                                }}
+                            />
+                            <button className="p-1.5 text-gray-400 hover:text-white hover:bg-[#2a2a3e] rounded transition-all duration-200">
+                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0zM10 7v6m3-3H7" />
+                                </svg>
+                            </button>
+                            <span className="text-sm text-gray-400 font-medium min-w-[3rem]">50%</span>
+                        </div>
+                    </div>
+                    
+                    {/* Timeline Area - Placeholder */}
+                    <div className="flex-1 bg-[#0d0d15] p-4">
+                        <div className="text-gray-500 text-xs text-center py-4">
+                            Timeline clips coming soon...
+                        </div>
+                    </div>
+                </div>
             </div>
         </div>
     );

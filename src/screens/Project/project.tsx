@@ -141,14 +141,16 @@ export const ProjectScreen: React.FC<ProjectScreenProps> = ({ sessionId }) => {
         const video = videoRef.current;
         const audio = processedAudioUrl ? aiAudioRef.current : audioRef.current;
 
-        if (!video || !audio) return;
+        if (!video) return;
 
         const handleTimeUpdate = () => {
             setCurrentTime(video.currentTime);
-            // Keep audio in sync
-            const diff = Math.abs(video.currentTime - audio.currentTime);
-            if (diff > 0.3) {
-                audio.currentTime = video.currentTime;
+            // Keep audio in sync - only if audio exists and drift is significant
+            if (audio && !video.paused) {
+                const diff = Math.abs(video.currentTime - audio.currentTime);
+                if (diff > 0.5) { // Increased threshold to avoid jitter
+                    audio.currentTime = video.currentTime;
+                }
             }
         };
 
@@ -157,15 +159,19 @@ export const ProjectScreen: React.FC<ProjectScreenProps> = ({ sessionId }) => {
             if (newDuration && !isNaN(newDuration) && isFinite(newDuration)) {
                 setDuration(prev => prev || newDuration);
             }
+            console.log('[Video] Loaded metadata - Width:', video.videoWidth, 'Height:', video.videoHeight);
             setRecordingDimensions({
                 recordingWidth: video.videoWidth,
                 recordingHeight: video.videoHeight
             });
+            // Set aspect ratio to original video dimensions
+            console.log('[Video] Setting aspect ratio to 1920:1080 (original)');
+            setAspectRatio('1920:1080');
         };
 
         const handleEnded = () => {
             setIsPlaying(false);
-            audio.pause();
+            if (audio) audio.pause();
             video.pause();
         };
 
@@ -199,6 +205,18 @@ export const ProjectScreen: React.FC<ProjectScreenProps> = ({ sessionId }) => {
         });
 
         setNormalizedEffects(normalized);
+    }, [results, recordingDimensions]);
+
+    // If backend provides recording dimensions, use them before metadata loads
+    useEffect(() => {
+        if (recordingDimensions) return;
+        const width = (results as any)?.recordingWidth;
+        const height = (results as any)?.recordingHeight;
+        if (width && height) {
+            setRecordingDimensions({ recordingWidth: width, recordingHeight: height });
+            setAspectRatio('1920:1080');
+            console.log('[Recording] Using backend dimensions', width, height);
+        }
     }, [results, recordingDimensions]);
 
     // Rendering loop for CSS effects
@@ -303,9 +321,13 @@ export const ProjectScreen: React.FC<ProjectScreenProps> = ({ sessionId }) => {
         const video = videoRef.current;
         const audio = processedAudioUrl ? aiAudioRef.current : audioRef.current;
 
-        if (video) video.currentTime = time;
-        if (audio) audio.currentTime = time;
-        setCurrentTime(time);
+        if (video) {
+            video.currentTime = time;
+        }
+        if (audio) {
+            audio.currentTime = time;
+        }
+        // Don't manually set currentTime state - let timeupdate event handle it
     }, [processedAudioUrl]);
 
     const handleVolumeChange = useCallback((newVolume: number) => {
@@ -478,6 +500,8 @@ export const ProjectScreen: React.FC<ProjectScreenProps> = ({ sessionId }) => {
                     backgroundColor={backgroundColor}
                     onAspectRatioChange={setAspectRatio}
                     onBackgroundColorChange={setBackgroundColor}
+                    videoWidth={recordingDimensions?.recordingWidth}
+                    videoHeight={recordingDimensions?.recordingHeight}
                     controls={
                         <VideoControls
                             audioUrl={audioUrl}
