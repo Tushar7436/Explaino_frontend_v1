@@ -5,6 +5,7 @@ import './project.css';
 import { HeaderSection } from './sections/HeaderSection';
 import { SideNavigationSection, SidebarMenuItem } from './sections/SideNavigationSection';
 import { TranscriptionSection } from './sections/TranscriptionSection';
+import { MusicSection } from './sections/MusicSection';
 import { MainCanvasSection, AspectRatio } from './sections/MainCanvasSection';
 import { VideoLayer, VideoControls } from './sections/VideoPlayerSection';
 
@@ -78,6 +79,7 @@ export const ProjectScreen: React.FC<ProjectScreenProps> = ({ sessionId }) => {
     // ============== COMPUTED VALUES ==============
     const narrations: Narration[] = results?.narrations || [];
     const showTranscriptionPanel = activeSidebarItem === 'script';
+    const showMusicPanel = activeSidebarItem === 'music';
 
     // ============== EFFECTS ==============
 
@@ -295,6 +297,9 @@ export const ProjectScreen: React.FC<ProjectScreenProps> = ({ sessionId }) => {
     // ============== HANDLERS ==============
 
     const handlePlayPause = useCallback(() => {
+        // Disable controls during speech generation
+        if (generatingSpeech) return;
+
         const video = videoRef.current;
         const audio = processedAudioUrl ? aiAudioRef.current : audioRef.current;
 
@@ -315,9 +320,12 @@ export const ProjectScreen: React.FC<ProjectScreenProps> = ({ sessionId }) => {
                 })
                 .catch(err => console.error('Video play error:', err));
         }
-    }, [isPlaying, processedAudioUrl]);
+    }, [isPlaying, processedAudioUrl, generatingSpeech]);
 
     const handleSeek = useCallback((time: number) => {
+        // Disable seek during speech generation
+        if (generatingSpeech) return;
+
         const video = videoRef.current;
         const audio = processedAudioUrl ? aiAudioRef.current : audioRef.current;
 
@@ -328,7 +336,7 @@ export const ProjectScreen: React.FC<ProjectScreenProps> = ({ sessionId }) => {
             audio.currentTime = time;
         }
         // Don't manually set currentTime state - let timeupdate event handle it
-    }, [processedAudioUrl]);
+    }, [processedAudioUrl, generatingSpeech]);
 
     const handleVolumeChange = useCallback((newVolume: number) => {
         const video = videoRef.current;
@@ -353,6 +361,16 @@ export const ProjectScreen: React.FC<ProjectScreenProps> = ({ sessionId }) => {
     const handleGenerateSpeech = async () => {
         if (!sessionId) return;
 
+        // Pause playback and stop audio (don't reset position)
+        const video = videoRef.current;
+        const audio = audioRef.current;
+        const aiAudio = aiAudioRef.current;
+
+        if (video) video.pause();
+        if (audio) audio.pause();
+        if (aiAudio) aiAudio.pause();
+        setIsPlaying(false);
+
         setGeneratingSpeech(true);
         setError(null);
 
@@ -367,6 +385,20 @@ export const ProjectScreen: React.FC<ProjectScreenProps> = ({ sessionId }) => {
             }
 
             setProcessedAudioUrl(newAudioUrl);
+            
+            // Auto-play after generation completes
+            setTimeout(() => {
+                if (video) {
+                    video.currentTime = 0;
+                    video.play();
+                }
+                if (aiAudioRef.current) {
+                    aiAudioRef.current.currentTime = 0;
+                    aiAudioRef.current.play();
+                }
+                setCurrentTime(0);
+                setIsPlaying(true);
+            }, 500); // Small delay to ensure audio is loaded
         } catch (err: any) {
             console.error('Speech generation error:', err);
             setError('Speech generation failed: ' + err.message);
@@ -494,6 +526,18 @@ export const ProjectScreen: React.FC<ProjectScreenProps> = ({ sessionId }) => {
                     />
                 )}
 
+                {/* Music Panel (conditionally shown) */}
+                {showMusicPanel && (
+                    <MusicSection
+                        isVisible={showMusicPanel}
+                        onClose={() => setActiveSidebarItem(null)}
+                        onMusicSelect={(url, filename) => {
+                            console.log('[Music] Selected:', filename, url);
+                            // TODO: Integrate with video export or timeline
+                        }}
+                    />
+                )}
+
                 {/* Main Canvas */}
                 <MainCanvasSection
                     aspectRatio={aspectRatio}
@@ -502,6 +546,16 @@ export const ProjectScreen: React.FC<ProjectScreenProps> = ({ sessionId }) => {
                     onBackgroundColorChange={setBackgroundColor}
                     videoWidth={recordingDimensions?.recordingWidth}
                     videoHeight={recordingDimensions?.recordingHeight}
+                    isGeneratingSpeech={generatingSpeech}
+                    timeline={results?.timeline}
+                    displayEffects={results?.displayEffects}
+                    narrations={narrations}
+                    intro={results?.intro}
+                    outro={results?.outro}
+                    videoDuration={duration}
+                    currentTime={currentTime}
+                    isPlaying={isPlaying}
+                    onSeek={handleSeek}
                     controls={
                         <VideoControls
                             audioUrl={audioUrl}
@@ -517,6 +571,7 @@ export const ProjectScreen: React.FC<ProjectScreenProps> = ({ sessionId }) => {
                             onToggleMute={handleToggleMute}
                             audioRef={audioRef}
                             aiAudioRef={aiAudioRef}
+                            disabled={generatingSpeech}
                         />
                     }
                 >

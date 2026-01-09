@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect, useLayoutEffect } from 'react';
 import { X, ArrowLeft, Upload, Plus } from 'lucide-react';
 
 interface BackgroundPanelProps {
@@ -18,6 +18,185 @@ export const BackgroundPanel: React.FC<BackgroundPanelProps> = ({
 }) => {
     const [activeTab, setActiveTab] = useState<BackgroundTab>('Color');
     const [useForAllClips, setUseForAllClips] = useState(false);
+    const [showColorPicker, setShowColorPicker] = useState(false);
+    const [hexInput, setHexInput] = useState(currentColor.replace('#', ''));
+    const [hue, setHue] = useState(0);
+    const [saturation, setSaturation] = useState(100);
+    const [brightness, setBrightness] = useState(50);
+    
+    const gradientCanvasRef = useRef<HTMLCanvasElement>(null);
+    const isDraggingRef = useRef(false);
+    const isInitializedRef = useRef(false);
+
+    // Convert HEX to RGB
+    const hexToRgb = (hex: string): { r: number; g: number; b: number } | null => {
+        const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+        return result ? {
+            r: parseInt(result[1], 16),
+            g: parseInt(result[2], 16),
+            b: parseInt(result[3], 16)
+        } : null;
+    };
+
+    // Convert RGB to HSB
+    const rgbToHsb = (r: number, g: number, b: number): { h: number; s: number; b: number } => {
+        r /= 255;
+        g /= 255;
+        b /= 255;
+
+        const max = Math.max(r, g, b);
+        const min = Math.min(r, g, b);
+        const delta = max - min;
+
+        let h = 0;
+        const s = max === 0 ? 0 : (delta / max) * 100;
+        const bValue = max * 100;
+
+        if (delta !== 0) {
+            if (max === r) {
+                h = ((g - b) / delta + (g < b ? 6 : 0)) * 60;
+            } else if (max === g) {
+                h = ((b - r) / delta + 2) * 60;
+            } else {
+                h = ((r - g) / delta + 4) * 60;
+            }
+        }
+
+        return { h: Math.round(h), s: Math.round(s), b: Math.round(bValue) };
+    };
+
+    // Initialize color picker with current color when opened - use layoutEffect to ensure it runs before canvas drawing
+    useLayoutEffect(() => {
+        if (showColorPicker && !isInitializedRef.current) {
+            const rgb = hexToRgb(currentColor);
+            if (rgb) {
+                const hsb = rgbToHsb(rgb.r, rgb.g, rgb.b);
+                setHue(hsb.h);
+                setSaturation(hsb.s);
+                setBrightness(hsb.b);
+                isInitializedRef.current = true;
+            }
+            setHexInput(currentColor.replace('#', ''));
+        } else if (!showColorPicker) {
+            isInitializedRef.current = false;
+        }
+    }, [showColorPicker]);
+
+    // Initialize hex input when currentColor changes
+    useEffect(() => {
+        setHexInput(currentColor.replace('#', ''));
+    }, [currentColor]);
+
+    // Convert HSB to RGB
+    const hsbToRgb = (h: number, s: number, b: number): { r: number; g: number; b: number } => {
+        s /= 100;
+        b /= 100;
+        const k = (n: number) => (n + h / 60) % 6;
+        const f = (n: number) => b * (1 - s * Math.max(0, Math.min(k(n), 4 - k(n), 1)));
+        return {
+            r: Math.round(255 * f(5)),
+            g: Math.round(255 * f(3)),
+            b: Math.round(255 * f(1))
+        };
+    };
+
+    // Convert RGB to HEX
+    const rgbToHex = (r: number, g: number, b: number): string => {
+        return '#' + [r, g, b].map(x => {
+            const hex = x.toString(16);
+            return hex.length === 1 ? '0' + hex : hex;
+        }).join('');
+    };
+
+    // Handle gradient canvas click/drag
+    const handleGradientInteraction = (e: React.MouseEvent<HTMLCanvasElement>) => {
+        const canvas = gradientCanvasRef.current;
+        if (!canvas) return;
+
+        const rect = canvas.getBoundingClientRect();
+        const x = e.clientX - rect.left;
+        const y = e.clientY - rect.top;
+
+        const newSaturation = Math.max(0, Math.min(100, (x / rect.width) * 100));
+        const newBrightness = Math.max(0, Math.min(100, 100 - (y / rect.height) * 100));
+
+        setSaturation(newSaturation);
+        setBrightness(newBrightness);
+
+        const rgb = hsbToRgb(hue, newSaturation, newBrightness);
+        const hex = rgbToHex(rgb.r, rgb.g, rgb.b);
+        onColorChange(hex);
+        setHexInput(hex.replace('#', ''));
+    };
+
+    const handleGradientMouseDown = (e: React.MouseEvent<HTMLCanvasElement>) => {
+        isDraggingRef.current = true;
+        handleGradientInteraction(e);
+    };
+
+    const handleGradientMouseMove = (e: React.MouseEvent<HTMLCanvasElement>) => {
+        if (isDraggingRef.current) {
+            handleGradientInteraction(e);
+        }
+    };
+
+    const handleGradientMouseUp = () => {
+        isDraggingRef.current = false;
+    };
+
+    // Handle hue slider change
+    const handleHueChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const newHue = parseInt(e.target.value);
+        setHue(newHue);
+
+        const rgb = hsbToRgb(newHue, saturation, brightness);
+        const hex = rgbToHex(rgb.r, rgb.g, rgb.b);
+        onColorChange(hex);
+        setHexInput(hex.replace('#', ''));
+    };
+
+    // Handle hex input change
+    const handleHexInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        let value = e.target.value.replace(/[^0-9a-fA-F]/g, '').toUpperCase();
+        if (value.length > 6) value = value.slice(0, 6);
+        setHexInput(value);
+
+        if (value.length === 6) {
+            const hex = '#' + value;
+            onColorChange(hex);
+        }
+    };
+
+    // Draw gradient canvas - depends on hue and showColorPicker to redraw when opened
+    useEffect(() => {
+        if (!showColorPicker) return;
+
+        const canvas = gradientCanvasRef.current;
+        if (!canvas) return;
+
+        const ctx = canvas.getContext('2d');
+        if (!ctx) return;
+
+        const width = canvas.width;
+        const height = canvas.height;
+
+        // Draw saturation gradient (left to right)
+        const saturationGradient = ctx.createLinearGradient(0, 0, width, 0);
+        const rgb = hsbToRgb(hue, 100, 100);
+        saturationGradient.addColorStop(0, '#FFFFFF');
+        saturationGradient.addColorStop(1, `rgb(${rgb.r}, ${rgb.g}, ${rgb.b})`);
+
+        ctx.fillStyle = saturationGradient;
+        ctx.fillRect(0, 0, width, height);
+
+        // Draw brightness gradient (top to bottom)
+        const brightnessGradient = ctx.createLinearGradient(0, 0, 0, height);
+        brightnessGradient.addColorStop(0, 'rgba(0, 0, 0, 0)');
+        brightnessGradient.addColorStop(1, 'rgba(0, 0, 0, 1)');
+
+        ctx.fillStyle = brightnessGradient;
+        ctx.fillRect(0, 0, width, height);
+    }, [hue, showColorPicker]);
 
     const colorPresets = [
         // Row 1 - Pinks/Magentas
@@ -118,25 +297,34 @@ export const BackgroundPanel: React.FC<BackgroundPanelProps> = ({
 
                         {/* Color Tab Content */}
                         {activeTab === 'Color' && (
-                            <div>
+                            <div className="space-y-4">
                                 {/* Primary Color Display */}
-                                <div className="flex items-center justify-between mb-4">
+                                <div className="flex items-center justify-between">
                                     <span className="text-gray-400 text-sm">Primary Color</span>
                                     <div className="flex items-center gap-2">
                                         <div
-                                            className="w-6 h-6 rounded-full border border-white/20"
+                                            className="w-8 h-8 rounded-full border-2 border-white/20 cursor-pointer hover:scale-110 transition-transform"
                                             style={{ backgroundColor: currentColor }}
+                                            onClick={() => setShowColorPicker(true)}
                                         />
-                                        <span className="text-white text-sm font-mono">{currentColor.toUpperCase()}</span>
+                                        <span 
+                                            className="text-white text-sm font-mono cursor-pointer hover:text-[#ec4899] transition-colors"
+                                            onClick={() => setShowColorPicker(true)}
+                                        >
+                                            {currentColor.toUpperCase()}
+                                        </span>
                                     </div>
                                 </div>
 
-                                {/* Color Grid */}
+                                {/* Color Presets Grid - No Label */}
                                 <div className="grid grid-cols-3 gap-3">
                                     {colorPresets.map((color) => (
                                         <button
                                             key={color}
-                                            onClick={() => onColorChange(color)}
+                                            onClick={() => {
+                                                onColorChange(color);
+                                                setHexInput(color.replace('#', ''));
+                                            }}
                                             className={`aspect-video rounded-lg transition-all duration-200 hover:scale-105 ${
                                                 currentColor.toUpperCase() === color.toUpperCase()
                                                     ? 'ring-2 ring-[#ec4899] ring-offset-2 ring-offset-[#1a1a2e]'
@@ -169,6 +357,86 @@ export const BackgroundPanel: React.FC<BackgroundPanelProps> = ({
                     </div>
                 </div>
             </div>
+
+            {/* Color Picker Popup Modal */}
+            {showColorPicker && (
+                <>
+                    {/* Modal Backdrop */}
+                    <div 
+                        className="fixed inset-0 bg-black/60 z-[60] backdrop-blur-sm"
+                        onClick={() => setShowColorPicker(false)}
+                    />
+
+                    {/* Color Picker Modal */}
+                    <div className="fixed top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-[560px] bg-[#1a1a2e] rounded-2xl shadow-2xl z-[70] animate-fade-in border border-[#2a2a3e]">
+                        {/* Modal Content */}
+                        <div className="p-6 space-y-6">
+                            {/* Gradient Canvas */}
+                            <div className="relative">
+                                <canvas
+                                    ref={gradientCanvasRef}
+                                    width={512}
+                                    height={300}
+                                    className="w-full h-[300px] rounded-xl cursor-crosshair"
+                                    onMouseDown={handleGradientMouseDown}
+                                    onMouseMove={handleGradientMouseMove}
+                                    onMouseUp={handleGradientMouseUp}
+                                    onMouseLeave={handleGradientMouseUp}
+                                />
+                                {/* Picker Circle */}
+                                <div
+                                    className="absolute w-6 h-6 border-3 border-white rounded-full pointer-events-none"
+                                    style={{
+                                        left: `calc(${saturation}% - 12px)`,
+                                        top: `calc(${100 - brightness}% - 12px)`,
+                                        boxShadow: '0 0 0 2px rgba(0,0,0,0.5), 0 4px 12px rgba(0,0,0,0.6)'
+                                    }}
+                                />
+                            </div>
+
+                            {/* Controls Row */}
+                            <div className="flex items-center gap-4">
+                                {/* Hex Input */}
+                                <div className="flex items-center gap-2 bg-[#0d0d15] rounded-lg px-4 py-3 flex-1">
+                                    <select className="bg-transparent text-gray-400 text-sm outline-none cursor-pointer">
+                                        <option>HEX</option>
+                                    </select>
+                                    <span className="text-white text-base">#</span>
+                                    <input
+                                        type="text"
+                                        value={hexInput}
+                                        onChange={handleHexInputChange}
+                                        className="bg-transparent text-white text-base outline-none flex-1 font-mono uppercase tracking-wider"
+                                        placeholder="3F87D4"
+                                        maxLength={6}
+                                    />
+                                </div>
+
+                                {/* Current Color Preview */}
+                                <div
+                                    className="w-14 h-14 rounded-xl border-2 border-white/20"
+                                    style={{ backgroundColor: currentColor }}
+                                />
+                            </div>
+
+                            {/* Hue Slider */}
+                            <div className="space-y-2">
+                                <input
+                                    type="range"
+                                    min="0"
+                                    max="360"
+                                    value={hue}
+                                    onChange={handleHueChange}
+                                    className="w-full h-3 rounded-full appearance-none cursor-pointer"
+                                    style={{
+                                        background: 'linear-gradient(to right, #ff0000 0%, #ffff00 17%, #00ff00 33%, #00ffff 50%, #0000ff 67%, #ff00ff 83%, #ff0000 100%)',
+                                    }}
+                                />
+                            </div>
+                        </div>
+                    </div>
+                </>
+            )}
         </>
     );
 };

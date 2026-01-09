@@ -45,7 +45,7 @@ export const TranscriptionSection: React.FC<TranscriptionSectionProps> = ({
     );
 
     return (
-        <div className="w-80 bg-[#252538] border-r border-[#2a2a3e] flex flex-col animate-slide-in">
+        <div className="w-96 bg-[#252538] border-r border-[#2a2a3e] flex flex-col animate-slide-in">
             {/* Toolbar - Generate Speech & AI Rewrite */}
             <div className="px-4 py-3 border-b border-[#2a2a3e] flex items-center gap-2">
                 <div className="flex-1 min-w-0 flex items-center gap-2">
@@ -73,7 +73,7 @@ export const TranscriptionSection: React.FC<TranscriptionSectionProps> = ({
                         </>
                     ) : (
                         <>
-                            <Sparkles size={15} />
+                            <span className="text-base">၊၊||၊</span>
                             <span className="truncate">Generate Speech</span>
                         </>
                     )}
@@ -146,36 +146,29 @@ export const TranscriptionSection: React.FC<TranscriptionSectionProps> = ({
                                     
                                     return (
                                         <span key={idx}>
-                                            {/* Sync Point Badge - Inline (Clueso-like: compact, subtle) */}
+                                            {/* Sync Point Badge - Inline with emoji (Clueso-style) */}
                                             <button
                                                 onClick={() => onSyncPointClick(narration.start)}
-                                                className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md text-[11px] font-medium leading-none align-middle transition-all duration-200 mr-2 mb-1 hover:-translate-y-[0.5px] active:translate-y-0 ${
-                                                    isActiveNarration
-                                                        ? 'bg-indigo-500 text-white ring-1 ring-white/10'
-                                                        : 'bg-indigo-500/15 text-indigo-200 hover:bg-indigo-500/25 ring-1 ring-white/5'
-                                                }`}
+                                                className="inline-flex items-center gap-0.5 px-1.5 py-0 rounded text-[10px] font-semibold bg-amber-500/90 text-gray-900 transition-all duration-150 mr-1 align-middle hover:bg-amber-400"
                                             >
-                                                <span className="w-1.5 h-1.5 rounded-full bg-current opacity-90" />
-                                                <span>Sync Point {idx + 1}</span>
+                                                <span className="text-[10px]">✦</span>
+                                                <span>Sync Point</span>
                                             </button>
 
                                             {/* Text with word-level highlighting */}
-                                            {narration.words && narration.words.length > 0 ? (
-                                                // Render with word-level highlighting
+                                            {hasProcessedAudio && narration.words && narration.words.length > 0 ? (
+                                                // Render with word-level highlighting (only when final audio is generated)
                                                 narration.words.map((wordData, wordIdx) => {
-                                                    const isCurrentWord = isActiveNarration && 
-                                                        currentTime >= wordData.start && 
-                                                        currentTime < wordData.end;
+                                                    // Check if this word is currently playing (use absolute timing)
+                                                    const isCurrentWord = currentTime >= wordData.start && currentTime < wordData.end;
                                                     
                                                     return (
                                                         <span
                                                             key={wordIdx}
-                                                            className={`transition-all duration-150 ${
+                                                            className={`transition-colors duration-150 ${
                                                                 isCurrentWord
-                                                                    ? 'text-white font-semibold bg-indigo-500/20 px-1 rounded'
-                                                                    : isActiveNarration
-                                                                        ? 'text-white'
-                                                                        : 'text-gray-400'
+                                                                    ? 'text-white font-semibold'
+                                                                    : 'text-gray-400'
                                                             }`}
                                                         >
                                                             {wordData.word}{' '}
@@ -184,7 +177,7 @@ export const TranscriptionSection: React.FC<TranscriptionSectionProps> = ({
                                                 })
                                             ) : (
                                                 // Fallback: render full text without word highlighting
-                                                <span className={`transition-colors duration-200 ${isActiveNarration ? 'text-white' : 'text-gray-400'}`}>
+                                                <span className={`transition-colors duration-200 ${hasProcessedAudio && isActiveNarration ? 'text-white' : 'text-gray-400'}`}>
                                                     {narration.text}{' '}
                                                 </span>
                                             )}

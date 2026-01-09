@@ -70,6 +70,7 @@ interface VideoControlsProps {
     onToggleMute: () => void;
     audioRef: React.RefObject<HTMLAudioElement>;
     aiAudioRef: React.RefObject<HTMLAudioElement>;
+    disabled?: boolean;
 }
 
 /**
@@ -89,7 +90,8 @@ export const VideoControls: React.FC<VideoControlsProps> = ({
     onVolumeChange,
     onToggleMute,
     audioRef,
-    aiAudioRef
+    aiAudioRef,
+    disabled = false
 }) => {
     const progressBarRef = useRef<HTMLDivElement>(null);
 
@@ -138,7 +140,12 @@ export const VideoControls: React.FC<VideoControlsProps> = ({
                 {/* Previous/Skip Back */}
                 <button
                     onClick={skipBack}
-                    className="w-9 h-9 flex items-center justify-center text-white hover:text-gray-300 bg-[#2a2a3e] hover:bg-[#3b3b50] rounded-full transition-all duration-200"
+                    disabled={disabled}
+                    className={`w-9 h-9 flex items-center justify-center text-white rounded-full transition-all duration-200 ${
+                        disabled 
+                            ? 'bg-[#2a2a3e]/50 cursor-not-allowed opacity-50' 
+                            : 'bg-[#2a2a3e] hover:bg-[#3b3b50] hover:text-gray-300'
+                    }`}
                     title="Skip back 10s"
                 >
                     <SkipBack size={16} />
@@ -147,7 +154,12 @@ export const VideoControls: React.FC<VideoControlsProps> = ({
                 {/* Play/Pause - Pink/Magenta like Clueso */}
                 <button
                     onClick={onPlayPause}
-                    className="w-10 h-10 flex items-center justify-center bg-[#ec4899] hover:bg-[#db2777] text-white rounded-full transition-all duration-200 shadow-lg"
+                    disabled={disabled}
+                    className={`w-10 h-10 flex items-center justify-center text-white rounded-full transition-all duration-200 shadow-lg ${
+                        disabled
+                            ? 'bg-[#ec4899]/50 cursor-not-allowed opacity-50'
+                            : 'bg-[#ec4899] hover:bg-[#db2777]'
+                    }`}
                 >
                     {isPlaying ? <Pause size={18} fill="white" /> : <Play size={18} fill="white" className="ml-0.5" />}
                 </button>
@@ -155,14 +167,19 @@ export const VideoControls: React.FC<VideoControlsProps> = ({
                 {/* Next/Skip Forward */}
                 <button
                     onClick={skipForward}
-                    className="w-9 h-9 flex items-center justify-center text-white hover:text-gray-300 bg-[#2a2a3e] hover:bg-[#3b3b50] rounded-full transition-all duration-200"
+                    disabled={disabled}
+                    className={`w-9 h-9 flex items-center justify-center text-white rounded-full transition-all duration-200 ${
+                        disabled 
+                            ? 'bg-[#2a2a3e]/50 cursor-not-allowed opacity-50' 
+                            : 'bg-[#2a2a3e] hover:bg-[#3b3b50] hover:text-gray-300'
+                    }`}
                     title="Skip forward 10s"
                 >
                     <SkipForward size={16} />
                 </button>
 
                 {/* Time Display - Clueso Format */}
-                <div className="text-white text-sm font-medium ml-2">
+                <div className={`text-sm font-medium ml-2 ${disabled ? 'text-gray-500' : 'text-white'}`}>
                     {formatTime(currentTime)} <span className="text-gray-500">/</span> {formatTime(duration)}
                 </div>
             </div>
