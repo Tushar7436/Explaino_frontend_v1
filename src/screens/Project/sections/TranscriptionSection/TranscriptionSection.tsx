@@ -159,39 +159,55 @@ export const TranscriptionSection: React.FC<TranscriptionSectionProps> = ({
 
                                     return (
                                         <span key={idx}>
-                                            {/* Sync Point Badge - Inline with emoji (Clueso-style) */}
-                                            <button
-                                                onClick={() => onSyncPointClick(narration.start)}
-                                                className="inline-flex items-center gap-0.5 px-1.5 py-0 rounded text-[10px] font-semibold bg-amber-500/90 text-gray-900 transition-all duration-150 mr-1 align-middle hover:bg-amber-400"
-                                            >
-                                                <span className="text-[10px]">✦</span>
-                                                <span>Sync Point</span>
-                                            </button>
-
                                             {/* Text with word-level highlighting */}
                                             {hasProcessedAudio && narration.words && narration.words.length > 0 ? (
-                                                // Render with word-level highlighting (only when final audio is generated)
+                                                // Render with word-level highlighting
                                                 narration.words.map((wordData, wordIdx) => {
-                                                    // Check if this word is currently playing (use absolute timing)
+                                                    // Check if this word is currently being spoken
                                                     const isCurrentWord = currentTime >= wordData.start && currentTime < wordData.end;
+                                                    // Check if this word has been spoken already
+                                                    const hasBeenSpoken = currentTime >= wordData.end;
 
                                                     return (
-                                                        <span
-                                                            key={wordIdx}
-                                                            className={`transition-colors duration-150 ${isCurrentWord
-                                                                ? 'text-white font-semibold'
-                                                                : 'text-gray-400'
-                                                                }`}
-                                                        >
-                                                            {wordData.word}{' '}
-                                                        </span>
+                                                        <React.Fragment key={wordIdx}>
+                                                            {/* Show Sync Point before the first word */}
+                                                            {wordIdx === 0 && (
+                                                                <button
+                                                                    onClick={() => onSyncPointClick(narration.start)}
+                                                                    className="inline-flex items-center gap-0.5 px-1.5 py-0 rounded text-[10px] font-semibold bg-amber-500/90 text-gray-900 transition-all duration-150 mr-1 align-middle hover:bg-amber-400"
+                                                                >
+                                                                    <span className="text-[10px]">✦</span>
+                                                                    <span>Sync Point</span>
+                                                                </button>
+                                                            )}
+                                                            <span
+                                                                className={`transition-colors duration-100 ${isCurrentWord
+                                                                        ? 'text-white font-bold bg-amber-500/20 px-0.5 rounded'
+                                                                        : hasBeenSpoken
+                                                                            ? 'text-gray-300'
+                                                                            : 'text-gray-500'
+                                                                    }`}
+                                                            >
+                                                                {wordData.word}
+                                                            </span>
+                                                            <span className="text-gray-600"> </span>
+                                                        </React.Fragment>
                                                     );
                                                 })
                                             ) : (
-                                                // Fallback: render full text without word highlighting
-                                                <span className={`transition-colors duration-200 ${hasProcessedAudio && isActiveNarration ? 'text-white' : 'text-gray-400'}`}>
-                                                    {narration.text}{' '}
-                                                </span>
+                                                // Fallback: render full text without highlighting (no audio generated yet)
+                                                <>
+                                                    <button
+                                                        onClick={() => onSyncPointClick(narration.start)}
+                                                        className="inline-flex items-center gap-0.5 px-1.5 py-0 rounded text-[10px] font-semibold bg-amber-500/90 text-gray-900 transition-all duration-150 mr-1 align-middle hover:bg-amber-400"
+                                                    >
+                                                        <span className="text-[10px]">✦</span>
+                                                        <span>Sync Point</span>
+                                                    </button>
+                                                    <span className="text-gray-400">
+                                                        {narration.text}{' '}
+                                                    </span>
+                                                </>
                                             )}
                                         </span>
                                     );
