@@ -236,12 +236,9 @@ export const MainCanvasSection: React.FC<MainCanvasSectionProps> = ({
                                         onSeek(Math.max(0, Math.min(time, videoDuration)));
                                     }}
                                 >
-                                    {/* Visual Track */}
-                                    <div className="border-b border-[#2a2a3e]">
-                                        <div className="flex items-center h-7 px-3 bg-[#252538] border-b border-[#2a2a3e]">
-                                            <span className="text-[11px] font-medium text-gray-300">Visual</span>
-                                        </div>
-                                        <div className="relative h-16 bg-[#1e1e2e]">
+                                    {/* Timeline Track - Single track like Clueso */}
+                                    <div>
+                                        <div className="relative h-20 bg-[#1e1e2e]">
                                             {timeline && timeline.length > 0 ? timeline.map((clip, idx) => {
                                                 const duration = Math.abs(clip.end - clip.start);
                                                 const startTime = Math.min(clip.start, clip.end);
@@ -260,10 +257,15 @@ export const MainCanvasSection: React.FC<MainCanvasSectionProps> = ({
                                                     bgColor = 'bg-gradient-to-r from-purple-700 to-purple-600';
                                                     label = '3 Outro';
                                                     icon = '👋';
-                                                } else {
-                                                    bgColor = 'bg-gradient-to-r from-gray-700 to-gray-600';
+                                                } else if (clip.name === 'raw_clip') {
+                                                    bgColor = 'bg-gradient-to-r from-slate-600 to-slate-700';
                                                     label = '2 Video';
                                                     icon = '🎥';
+                                                } else {
+                                                    // For any other custom clips
+                                                    bgColor = 'bg-gradient-to-r from-indigo-600 to-indigo-700';
+                                                    label = clip.name;
+                                                    icon = '🎬';
                                                 }
 
                                                 return (
@@ -295,90 +297,6 @@ export const MainCanvasSection: React.FC<MainCanvasSectionProps> = ({
                                             )}
                                         </div>
                                     </div>
-
-                                    {/* Effects Track */}
-                                    {displayEffects && displayEffects.length > 0 && (
-                                        <div className="border-b border-[#2a2a3e]">
-                                            <div className="flex items-center h-7 px-3 bg-[#252538] border-b border-[#2a2a3e]">
-                                                <span className="text-[11px] font-medium text-gray-300">Effects</span>
-                                            </div>
-                                            <div className="relative h-11 bg-[#1e1e2e]">
-                                                {displayEffects.map((effect, idx) => {
-                                                    const duration = effect.end - effect.start;
-                                                    const left = effect.start * zoomLevel;
-                                                    const width = Math.max(duration * zoomLevel, 50);
-                                                    
-                                                    let bgColor = 'bg-cyan-500';
-                                                    let icon = '✨';
-                                                    if (effect.type === 'zoom') {
-                                                        bgColor = 'bg-blue-500';
-                                                        icon = '🔍';
-                                                    } else if (effect.type === 'highlight') {
-                                                        bgColor = 'bg-indigo-500';
-                                                        icon = '💡';
-                                                    }
-
-                                                    return (
-                                                        <div
-                                                            key={`effect-${idx}`}
-                                                            className={`absolute top-1.5 h-8 ${bgColor} rounded-md border border-white/20 shadow-md overflow-hidden cursor-pointer hover:brightness-110 hover:scale-[1.02] transition-all duration-200`}
-                                                            style={{ left: `${left}px`, width: `${width}px` }}
-                                                            title={`${effect.type} (${effect.start.toFixed(1)}s - ${effect.end.toFixed(1)}s)`}
-                                                        >
-                                                            <div className="h-full flex items-center justify-center gap-1 px-2">
-                                                                <span className="text-xs">{icon}</span>
-                                                                <span className="text-[9px] font-semibold text-white truncate capitalize">
-                                                                    {effect.type}
-                                                                </span>
-                                                            </div>
-                                                        </div>
-                                                    );
-                                                })}
-                                            </div>
-                                        </div>
-                                    )}
-
-                                    {/* Narration Track */}
-                                    {narrations && narrations.length > 0 && (
-                                        <div className="border-b border-[#2a2a3e]">
-                                            <div className="flex items-center h-7 px-3 bg-[#252538] border-b border-[#2a2a3e]">
-                                                <span className="text-[11px] font-medium text-gray-300">Narration</span>
-                                            </div>
-                                            <div className="relative h-20 bg-[#1e1e2e]">
-                                                {narrations.map((narration, idx) => {
-                                                    const duration = narration.end - narration.start;
-                                                    const left = narration.start * zoomLevel;
-                                                    const width = Math.max(duration * zoomLevel, 60);
-
-                                                    return (
-                                                        <div
-                                                            key={`narration-${idx}`}
-                                                            className="absolute top-2 h-16 bg-gradient-to-br from-emerald-600 to-emerald-700 rounded-lg border border-white/20 shadow-lg overflow-hidden cursor-pointer hover:brightness-110 hover:scale-[1.01] transition-all duration-200"
-                                                            style={{ left: `${left}px`, width: `${width}px` }}
-                                                            title={narration.text}
-                                                        >
-                                                            <div className="p-2 h-full flex flex-col justify-center">
-                                                                <div className="flex items-center gap-1 mb-1">
-                                                                    <span className="text-xs">🎙️</span>
-                                                                    <span className="text-[9px] font-bold text-emerald-100">
-                                                                        Narration {idx + 1}
-                                                                    </span>
-                                                                </div>
-                                                                <span className="text-[9px] font-medium text-white line-clamp-2 leading-tight">
-                                                                    {narration.text}
-                                                                </span>
-                                                                {narration.musicStyle && (
-                                                                    <span className="text-[8px] text-emerald-200 mt-1 truncate">
-                                                                        🎵 {narration.musicStyle}
-                                                                    </span>
-                                                                )}
-                                                            </div>
-                                                        </div>
-                                                    );
-                                                })}
-                                            </div>
-                                        </div>
-                                    )}
 
                                     {/* Playhead */}
                                     <div

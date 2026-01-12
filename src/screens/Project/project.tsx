@@ -419,19 +419,14 @@ export const ProjectScreen: React.FC<ProjectScreenProps> = ({ sessionId }) => {
 
             setProcessedAudioUrl(newAudioUrl);
 
-            // Auto-play after generation completes
-            setTimeout(() => {
-                if (video) {
-                    video.currentTime = 0;
-                    video.play();
-                }
-                if (aiAudioRef.current) {
-                    aiAudioRef.current.currentTime = 0;
-                    aiAudioRef.current.play();
-                }
-                setCurrentTime(0);
-                setIsPlaying(true);
-            }, 500); // Small delay to ensure audio is loaded
+            // Reset to beginning but don't auto-play - user can play manually
+            if (video) {
+                video.currentTime = 0;
+            }
+            if (aiAudioRef.current) {
+                aiAudioRef.current.currentTime = 0;
+            }
+            setCurrentTime(0);
         } catch (err: any) {
             console.error('Speech generation error:', err);
             setError('Speech generation failed: ' + err.message);
