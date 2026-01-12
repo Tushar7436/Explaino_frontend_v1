@@ -78,6 +78,33 @@ export async function generateSpeech(sessionId) {
 }
 
 /**
+ * Rewrite narrations using AI (called when user clicks "AI Rewrite" button)
+ * @param {string} sessionId - Session ID
+ * @returns {Promise<Array>} Array of new narrations
+ */
+export async function rewriteNarrations(sessionId) {
+    const response = await fetch(`${API_BASE_URL}/api/regenerate-script`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ sessionId })
+    });
+
+    if (!response.ok) {
+        const error = await response.json().catch(() => ({ message: 'Unknown error' }));
+        throw new Error(error.message || `HTTP ${response.status}`);
+    }
+
+    const result = await response.json();
+    // API returns { success: true, data: { narrations: [...] } }
+    if (result.data && result.data.narrations) {
+        return result.data.narrations;
+    }
+    return result.data || result;
+}
+
+/**
  * Export video with FFmpeg rendering (called when user clicks export button)
  * Sends zoom effect instructions to backend for rendering
  * Backend will fetch video/audio from S3 using the sessionId

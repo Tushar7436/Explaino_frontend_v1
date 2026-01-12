@@ -103,6 +103,7 @@ export interface ExportOptions {
 export function processRecording(payload: any): Promise<any>;
 export function processSession(sessionId: string): Promise<ProcessSessionResponse>;
 export function generateSpeech(sessionId: string): Promise<SpeechResponse>;
+export function rewriteNarrations(sessionId: string): Promise<Narration[]>;
 export function exportVideo(
     sessionId: string,
     instructions: ZoomInstruction[],
