@@ -94,25 +94,29 @@ export function normalizeCoordinates(bounds, recordingWidth, recordingHeight, vi
 }
 
 /**
- * Cubic easing function (ease-in-out)
+ * Cubic easing function (ease-in-out) - OPTIMIZED
  * @param {number} t - Progress value between 0 and 1
  * @returns {number} Eased value between 0 and 1
  */
 export function easeInOutCubic(t) {
-    return t < 0.5
-        ? 4 * t * t * t
-        : 1 - Math.pow(-2 * t + 2, 3) / 2;
+    if (t < 0.5) {
+        return 4 * t * t * t;
+    }
+    const f = 2 * t - 2;
+    return 1 + 0.5 * f * f * f;
 }
 
 /**
- * Quadratic easing function (ease-in-out)
+ * Quadratic easing function (ease-in-out) - OPTIMIZED
  * @param {number} t - Progress value between 0 and 1
  * @returns {number} Eased value between 0 and 1
  */
 export function easeInOutQuad(t) {
-    return t < 0.5
-        ? 2 * t * t
-        : 1 - Math.pow(-2 * t + 2, 2) / 2;
+    if (t < 0.5) {
+        return 2 * t * t;
+    }
+    const f = 2 * t - 2;
+    return 1 - 0.5 * f * f;
 }
 
 /**
@@ -256,42 +260,59 @@ export function hasEffectContinuation(currentEffect, allEffects, timeThreshold =
 
 /**
  * Compute effect progress with smart ease-out suppression
- * If there's a continuation effect at the same position, don't zoom out
+ * Uses FIXED TIME for zoom in/out instead of percentage for consistent speed
  * @param {number} currentTime - Current video time
  * @param {number} start - Effect start time
  * @param {number} end - Effect end time
- * @param {number} easeInPercent - Percentage of duration for ease-in
- * @param {number} easeOutPercent - Percentage of duration for ease-out
+ * @param {number} easeInPercent - DEPRECATED - kept for compatibility
+ * @param {number} easeOutPercent - DEPRECATED - kept for compatibility
  * @param {boolean} hasContinuation - Whether this effect continues into another at same position
  * @returns {number} Progress value between 0 and 1
  */
 export function computeEffectProgressWithContinuation(currentTime, start, end, easeInPercent = 0.20, easeOutPercent = 0.40, hasContinuation = false) {
     const duration = end - start;
-    const t = (currentTime - start) / duration;
+    const elapsed = currentTime - start;
 
     // Return 0 at boundaries for clean entry/exit
-    if (t <= 0) return 0;
-    if (t >= 1) return hasContinuation ? 1 : 0; // If continuation, stay zoomed at end
+    if (elapsed <= 0) return 0;
+    if (elapsed >= duration) return hasContinuation ? 1 : 0;
 
-    const easeInEnd = easeInPercent;
-    const easeOutStart = 1 - easeOutPercent;
+    // FIXED TIME APPROACH for consistent speed regardless of effect duration
+    // Zoom in: 0.3-0.5 seconds (fast and snappy)
+    // Zoom out: 0.5-0.8 seconds (smooth exit)
+
+    // For very short effects (< 1s), use percentage-based to avoid issues
+    if (duration < 1.0) {
+        const t = elapsed / duration;
+        const easeInEnd = 0.25;
+        const easeOutStart = 0.75;
+
+        if (t < easeInEnd) {
+            return easeInOutCubic(t / easeInEnd);
+        }
+        if (t > easeOutStart && !hasContinuation) {
+            return easeInOutQuad((1 - t) / (1 - easeOutStart));
+        }
+        return 1;
+    }
+
+    // For medium to long effects, use FIXED TIME
+    const ZOOM_IN_TIME = Math.min(0.4, duration * 0.15);  // Max 0.4s or 15% of duration
+    const ZOOM_OUT_TIME = Math.min(0.6, duration * 0.2);  // Max 0.6s or 20% of duration
 
     // Ease-in phase (quick zoom in)
-    if (t < easeInEnd) {
-        return easeInOutCubic(t / easeInEnd);
+    if (elapsed < ZOOM_IN_TIME) {
+        return easeInOutCubic(elapsed / ZOOM_IN_TIME);
     }
 
     // Ease-out phase - SKIP if there's a continuation
-    if (t > easeOutStart) {
-        if (hasContinuation) {
-            // Don't zoom out, maintain full zoom
-            return 1;
-        }
+    const timeBeforeEnd = duration - elapsed;
+    if (timeBeforeEnd < ZOOM_OUT_TIME && !hasContinuation) {
         // Use quadratic easing for gentler ease-out
-        return easeInOutQuad((1 - t) / easeOutPercent);
+        return easeInOutQuad(timeBeforeEnd / ZOOM_OUT_TIME);
     }
 
-    // Hold phase
+    // Hold phase - stay at full zoom
     return 1;
 }
 

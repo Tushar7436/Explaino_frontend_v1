@@ -221,28 +221,47 @@ export const ProjectScreen: React.FC<ProjectScreenProps> = ({ sessionId }) => {
         }
     }, [results, recordingDimensions]);
 
-    // Rendering loop for CSS effects
+    // Rendering loop for CSS effects - OPTIMIZED
     useEffect(() => {
         const video = videoRef.current;
         const videoLayer = videoLayerRef.current;
 
         if (!video || !videoLayer || normalizedEffects.length === 0) return;
 
+        // Enable GPU acceleration
+        videoLayer.style.willChange = 'transform';
+
+        // Track current effect to minimize recalculations
+        let currentEffectId: string | null = null;
+        let lastUpdateTime = 0;
+        const UPDATE_INTERVAL = 16; // ~60fps, but throttled
+
         const renderFrame = () => {
             const time = video.currentTime;
+            const now = performance.now();
+
+            // Throttle updates to reduce CPU load
+            if (now - lastUpdateTime < UPDATE_INTERVAL) {
+                if (!video.paused && !video.ended) {
+                    rafRef.current = requestAnimationFrame(renderFrame);
+                }
+                return;
+            }
+            lastUpdateTime = now;
+
             const activeEffects = getActiveEffects(normalizedEffects, time);
 
             if (activeEffects.length > 0) {
                 const effect = resolveZoomEffect(activeEffects);
 
                 if (effect) {
+                    const effectId = `${effect.start}-${effect.end}`;
+
                     // CRITICAL: Use anchorX/anchorY (normalized 0-1 range) for camera-zoom
-                    // NOT centerX/centerY which are in pixel coordinates
                     const { anchorX, anchorY, autoScale } = effect.normalizedBounds;
                     const targetScale = autoScale || effect.style?.zoom?.scale || 1;
 
                     // Check if there's a continuation effect at the same position
-                    // If so, don't zoom out - maintain the zoom level
                     const hasContinuation = hasEffectContinuation(effect, normalizedEffects, 0.5);
 
                     const effectProgress = computeEffectProgressWithContinuation(
@@ -253,14 +272,25 @@ export const ProjectScreen: React.FC<ProjectScreenProps> = ({ sessionId }) => {
                     );
 
                     // Apply scale with base of 0.94 (initial video size)
-                    // When scale = 1. video is at 94% size
-                    // When scale > 1, video expands beyond 94% toward filling background
                     const finalScale = 0.94 * scale;
-                    videoLayer.style.transform = `scale(${finalScale}) translate(${translateX}%, ${translateY}%)`;
+
+                    // Use transform3d for GPU acceleration
+                    videoLayer.style.transform = `scale3d(${finalScale}, ${finalScale}, 1) translate3d(${translateX}%, ${translateY}%, 0)`;
+
+                    // Add smooth transition when effect changes
+                    if (currentEffectId !== effectId) {
+                        videoLayer.style.transition = 'transform 0.3s cubic-bezier(0.25, 0.1, 0.25, 1)';
+                        currentEffectId = effectId;
+                    } else {
+                        // Remove transition during active animation for smooth frame-by-frame updates
+                        videoLayer.style.transition = 'none';
+                    }
                 }
             } else {
-                // Reset to neutral state - 94% size with no translation
-                videoLayer.style.transform = 'scale(0.94) translate(0%, 0%)';
+                // Reset to neutral state with smooth transition
+                videoLayer.style.transition = 'transform 0.4s cubic-bezier(0.25, 0.1, 0.25, 1)';
+                videoLayer.style.transform = 'scale3d(0.94, 0.94, 1) translate3d(0%, 0%, 0)';
+                currentEffectId = null;
             }
 
             if (!video.paused && !video.ended) {
@@ -270,6 +300,7 @@ export const ProjectScreen: React.FC<ProjectScreenProps> = ({ sessionId }) => {
 
         const handlePlay = () => {
             if (rafRef.current) cancelAnimationFrame(rafRef.current);
+            lastUpdateTime = 0; // Reset throttle on play
             rafRef.current = requestAnimationFrame(renderFrame);
         };
 
@@ -291,6 +322,8 @@ export const ProjectScreen: React.FC<ProjectScreenProps> = ({ sessionId }) => {
             video.removeEventListener('play', handlePlay);
             video.removeEventListener('pause', handlePause);
             if (rafRef.current) cancelAnimationFrame(rafRef.current);
+            // Clean up GPU hint
+            if (videoLayer) videoLayer.style.willChange = 'auto';
         };
     }, [normalizedEffects]);
 
@@ -385,7 +418,7 @@ export const ProjectScreen: React.FC<ProjectScreenProps> = ({ sessionId }) => {
             }
 
             setProcessedAudioUrl(newAudioUrl);
-            
+
             // Auto-play after generation completes
             setTimeout(() => {
                 if (video) {
