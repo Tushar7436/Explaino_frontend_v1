@@ -24,8 +24,6 @@ interface TranscriptionSectionProps {
     isGenerating: boolean;
     hasProcessedAudio: boolean;
     currentTime?: number;
-    onRewrite: () => void;
-    isRewriting: boolean;
 }
 
 export const TranscriptionSection: React.FC<TranscriptionSectionProps> = ({
@@ -36,9 +34,7 @@ export const TranscriptionSection: React.FC<TranscriptionSectionProps> = ({
     onGenerateScript,
     isGenerating,
     hasProcessedAudio,
-    currentTime = 0,
-    onRewrite,
-    isRewriting
+    currentTime = 0
 }) => {
     if (!isVisible) return null;
 
@@ -56,46 +52,37 @@ export const TranscriptionSection: React.FC<TranscriptionSectionProps> = ({
                     <button
                         onClick={onGenerateScript}
                         disabled={isGenerating || hasProcessedAudio}
-                        className={`h-10 flex-1 min-w-0 inline-flex items-center justify-center gap-2 px-3 rounded-lg text-sm font-medium transition-all duration-200 ${isGenerating
-                            ? 'bg-[#4a4a5e] text-gray-400 cursor-not-allowed'
-                            : hasProcessedAudio
-                                ? 'bg-green-600 text-white cursor-not-allowed'
-                                : 'bg-indigo-500 hover:bg-indigo-600 text-white'
-                            }`}
+                        className={`h-10 flex-1 min-w-0 inline-flex items-center justify-center gap-2 px-3 rounded-lg text-sm font-medium transition-all duration-200 ${
+                            isGenerating
+                                ? 'bg-[#4a4a5e] text-gray-400 cursor-not-allowed'
+                                : hasProcessedAudio
+                                    ? 'bg-green-600 text-white cursor-not-allowed'
+                                    : 'bg-indigo-500 hover:bg-indigo-600 text-white'
+                        }`}
                     >
-                        {isGenerating ? (
-                            <>
-                                <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                                <span className="truncate">Generating...</span>
-                            </>
-                        ) : hasProcessedAudio ? (
-                            <>
-                                <span>✅</span>
-                                <span className="truncate">Generated</span>
-                            </>
-                        ) : (
-                            <>
-                                <span className="text-base">၊၊||၊</span>
-                                <span className="truncate">Generate Speech</span>
-                            </>
-                        )}
+                    {isGenerating ? (
+                        <>
+                            <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                            <span className="truncate">Generating...</span>
+                        </>
+                    ) : hasProcessedAudio ? (
+                        <>
+                            <span>✅</span>
+                            <span className="truncate">Generated</span>
+                        </>
+                    ) : (
+                        <>
+                            <span className="text-base">၊၊||၊</span>
+                            <span className="truncate">Generate Speech</span>
+                        </>
+                    )}
                     </button>
 
-                    {/* AI Rewrite Button */}
-                    <button
-                        onClick={onRewrite}
-                        disabled={isRewriting || isGenerating}
-                        className={`h-10 shrink-0 inline-flex items-center justify-center gap-2 px-3 rounded-lg text-sm font-medium transition-all duration-200 whitespace-nowrap ${isRewriting
-                            ? 'bg-[#3b3b50] text-gray-400 cursor-not-allowed'
-                            : 'bg-[#3b3b50] hover:bg-[#4a4a5e] text-white'
-                            }`}
-                    >
-                        {isRewriting ? (
-                            <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                        ) : (
-                            <Sparkles size={15} />
-                        )}
-                        <span>{isRewriting ? 'Rewriting...' : 'AI Rewrite'}</span>
+                    {/* AI Rewrite Button - Removed dropdown for now */}
+                    <button className="h-10 shrink-0 inline-flex items-center justify-center gap-2 px-3 bg-[#3b3b50] hover:bg-[#4a4a5e] text-white rounded-lg text-sm font-medium transition-all duration-200 whitespace-nowrap">
+                        <Sparkles size={15} />
+                        <span>AI Rewrite</span>
+                        {/* <ChevronDown size={14} /> */}
                     </button>
 
                     {/* Add Button - Commented out for now */}
@@ -155,7 +142,7 @@ export const TranscriptionSection: React.FC<TranscriptionSectionProps> = ({
                             <div className="text-[13px] leading-6 text-gray-300 tracking-[0.01em] antialiased">
                                 {narrations.map((narration, idx) => {
                                     const isActiveNarration = activeIndex === idx;
-
+                                    
                                     return (
                                         <span key={idx}>
                                             {/* Text with word-level highlighting */}
@@ -166,7 +153,7 @@ export const TranscriptionSection: React.FC<TranscriptionSectionProps> = ({
                                                     const isCurrentWord = currentTime >= wordData.start && currentTime < wordData.end;
                                                     // Check if this word has been spoken already
                                                     const hasBeenSpoken = currentTime >= wordData.end;
-
+                                                    
                                                     return (
                                                         <React.Fragment key={wordIdx}>
                                                             {/* Show Sync Point before the first word */}
@@ -180,12 +167,13 @@ export const TranscriptionSection: React.FC<TranscriptionSectionProps> = ({
                                                                 </button>
                                                             )}
                                                             <span
-                                                                className={`transition-colors duration-100 ${isCurrentWord
+                                                                className={`transition-colors duration-100 ${
+                                                                    isCurrentWord
                                                                         ? 'text-white font-bold bg-amber-500/20 px-0.5 rounded'
                                                                         : hasBeenSpoken
                                                                             ? 'text-gray-300'
                                                                             : 'text-gray-500'
-                                                                    }`}
+                                                                }`}
                                                             >
                                                                 {wordData.word}
                                                             </span>

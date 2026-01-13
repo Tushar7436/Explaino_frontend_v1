@@ -11,7 +11,7 @@ import { VideoLayer, VideoControls } from './sections/VideoPlayerSection';
 
 // Services & Hooks
 import { useProcessingWebSocket } from '../../hooks/useProcessingWebSocket';
-import { processSession, generateSpeech, exportVideo, rewriteNarrations } from '../../services/backend-api';
+import { processSession, generateSpeech, exportVideo } from '../../services/backend-api';
 import {
     normalizeCoordinates,
     calculateZoomTransform,
@@ -103,7 +103,6 @@ export const ProjectScreen: React.FC<ProjectScreenProps> = ({ sessionId }) => {
     // ============== PROCESSING STATE ==============
     const [preparing, setPreparing] = useState(true);
     const [generatingSpeech, setGeneratingSpeech] = useState(false);
-    const [isRewriting, setIsRewriting] = useState(false);
     const [exporting, setExporting] = useState(false);
     const [results, setResults] = useState<any>(null);
     const [error, setError] = useState<string | null>(null);
@@ -951,31 +950,6 @@ export const ProjectScreen: React.FC<ProjectScreenProps> = ({ sessionId }) => {
         }
     };
 
-    const handleRewrite = async () => {
-        if (!sessionId) return;
-
-        try {
-            setIsRewriting(true);
-            setError(null);
-            const newNarrations = await rewriteNarrations(sessionId);
-
-            // Update results with new narrations
-            if (newNarrations) {
-                setResults((prev: any) => ({
-                    ...prev,
-                    narrations: newNarrations
-                }));
-                // Reset processed audio since narrations changed
-                setProcessedAudioUrl(null);
-            }
-        } catch (err: any) {
-            console.error('Failed to rewrite narrations:', err);
-            setError(err.message || 'Failed to rewrite narrations');
-        } finally {
-            setIsRewriting(false);
-        }
-    };
-
     const handleSyncPointClick = (timestamp: number) => {
         handleSeek(timestamp);
     };
@@ -1092,8 +1066,6 @@ export const ProjectScreen: React.FC<ProjectScreenProps> = ({ sessionId }) => {
                         isGenerating={generatingSpeech}
                         hasProcessedAudio={hasSpeechGenerated}
                         currentTime={currentTime}
-                        onRewrite={handleRewrite}
-                        isRewriting={isRewriting}
                     />
                 )}
 
