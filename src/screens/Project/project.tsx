@@ -20,13 +20,21 @@ import {
     getActiveEffects,
     resolveZoomEffect
 } from '../../utils/effectProcessor';
+import {
+    getActiveClip,
+    isVideoVisible,
+    timelineToVideoTime,
+    videoTimeToTimelineTime,
+    getTimelineDuration,
+    getPlaybackMode,
+    type TimelineClip
+} from '../../utils/timelineUtils';
 
 interface ProjectScreenProps {
     sessionId?: string;
 }
 
 interface Narration {
-    windowIndex?: number;
     start: number;
     end: number;
     text: string;
@@ -39,6 +47,26 @@ interface RecordingDimensions {
 }
 
 export const ProjectScreen: React.FC<ProjectScreenProps> = ({ sessionId }) => {
+    // ============== CDN CONFIGURATION ==============
+    const CDN_BASE = 'https://cdn.vocallabs.ai';
+    const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+    
+    // Helper to convert S3 paths to CDN URLs
+    const formatCdnUrl = (url: string | null | undefined): string | null => {
+        if (!url) return null;
+        
+        // If already a full URL, return as-is
+        if (url.startsWith('http://') || url.startsWith('https://')) {
+            return url;
+        }
+        
+        // Remove leading slash if present
+        const path = url.startsWith('/') ? url.slice(1) : url;
+        
+        // Return CDN URL
+        return `${CDN_BASE}/${path}`;
+    };
+    
     // ============== UI STATE ==============
     const [activeTab, setActiveTab] = useState<'video' | 'article'>('video');
     const [activeSidebarItem, setActiveSidebarItem] = useState<SidebarMenuItem | null>('script');
@@ -54,6 +82,23 @@ export const ProjectScreen: React.FC<ProjectScreenProps> = ({ sessionId }) => {
     const [duration, setDuration] = useState(0);
     const [volume, setVolume] = useState(1);
     const [isMuted, setIsMuted] = useState(false);
+    const [isSeeking, setIsSeeking] = useState(false);
+    
+    // ============== CLIP-BASED AUDIO ==============
+    const [clipAudioUrls, setClipAudioUrls] = useState<{
+        intro: string | null;
+        video: string | null;
+        outro: string | null;
+    }>({ intro: null, video: null, outro: null });
+    const [currentClipAudio, setCurrentClipAudio] = useState<string | null>(null);
+    const [hasSpeechGenerated, setHasSpeechGenerated] = useState(false);
+    
+    // Reset audio state when sessionId changes (new session)
+    useEffect(() => {
+        setHasSpeechGenerated(false);
+        setClipAudioUrls({ intro: null, video: null, outro: null });
+        setCurrentClipAudio(null);
+    }, [sessionId]);
 
     // ============== PROCESSING STATE ==============
     const [preparing, setPreparing] = useState(true);
@@ -67,6 +112,70 @@ export const ProjectScreen: React.FC<ProjectScreenProps> = ({ sessionId }) => {
     const [normalizedEffects, setNormalizedEffects] = useState<any[]>([]);
     const [recordingDimensions, setRecordingDimensions] = useState<RecordingDimensions | null>(null);
 
+    // ============== TIMELINE STATE ==============
+    const [activeClip, setActiveClip] = useState<TimelineClip | null>(null);
+    
+    // Compute video visibility based on current clip
+    const videoVisible = results?.timeline ? isVideoVisible(results.timeline, currentTime) : true;
+    
+    // Update current clip audio when active clip changes
+    useEffect(() => {
+        if (!activeClip) return;
+        
+        const clipName = activeClip.name as 'intro' | 'video' | 'outro';
+        const audioUrl = clipAudioUrls[clipName];
+        
+        const audio = aiAudioRef.current;
+        if (!audio) return;
+        
+        // Always update audio when clip changes or URL changes
+        const needsUpdate = audioUrl !== currentClipAudio || audio.src !== audioUrl;
+        
+        if (needsUpdate) {
+            console.log(`[Audio] Loading ${clipName} clip audio:`, audioUrl);
+            
+            // Pause and clear current audio
+            audio.pause();
+            audio.currentTime = 0;
+            
+            if (audioUrl) {
+                // Set new audio source
+                audio.src = audioUrl;
+                setCurrentClipAudio(audioUrl);
+                
+                // Add error handler
+                audio.onerror = (e) => {
+                    console.error(`[Audio] Error loading ${clipName} audio:`, e);
+                    console.error('[Audio] Failed URL:', audioUrl);
+                };
+                
+                // Add loaded handler
+                audio.onloadeddata = () => {
+                    console.log(`[Audio] ${clipName} audio loaded, duration:`, audio.duration, 'ready to play');
+                    
+                    // If playing, seek to correct time and play
+                    if (isPlaying && results?.timeline) {
+                        const clipRelativeTime = Math.max(0, currentTime - activeClip.start);
+                        audio.currentTime = clipRelativeTime;
+                        audio.play().catch(err => console.error('[Audio] Auto-play error:', err));
+                        console.log(`[Audio] Auto-playing from ${clipRelativeTime}s`);
+                    }
+                };
+                
+                audio.load();
+            } else {
+                console.log(`[Audio] No audio URL for ${clipName} clip`);
+                audio.src = '';
+                setCurrentClipAudio(null);
+            }
+        }
+    }, [activeClip, clipAudioUrls, currentClipAudio, isPlaying, currentTime, results]);
+    
+    // Compute background color based on active clip (for intro/outro) or user selection
+    const currentBackgroundColor = (activeClip && (activeClip.name === 'intro' || activeClip.name === 'outro'))
+        ? (activeClip.backgroundColor || backgroundColor)
+        : backgroundColor;
+
     // ============== REFS ==============
     const videoRef = useRef<HTMLVideoElement>(null);
     const audioRef = useRef<HTMLAudioElement>(null);
@@ -79,6 +188,51 @@ export const ProjectScreen: React.FC<ProjectScreenProps> = ({ sessionId }) => {
 
     // ============== COMPUTED VALUES ==============
     const narrations: Narration[] = results?.narrations || [];
+    
+    // Extract clip audio URLs from clip-based narrations structure
+    useEffect(() => {
+        if (!results?.narrations || !Array.isArray(results.narrations)) return;
+        
+        const clipNarrations = results.narrations;
+        
+        const introClip = clipNarrations.find((c: any) => c.clipName === 'intro');
+        const videoClip = clipNarrations.find((c: any) => c.clipName === 'video');
+        const outroClip = clipNarrations.find((c: any) => c.clipName === 'outro');
+        
+        // Check if speech has been generated (all clips must have generated audio)
+        const speechGenerated = !!(introClip?.generatedAudioUrl && videoClip?.generatedAudioUrl && outroClip?.generatedAudioUrl);
+        setHasSpeechGenerated(speechGenerated);
+        
+        // If speech generated, use generatedAudioUrl for all clips; otherwise use rawAudioUrl per clip
+        if (speechGenerated) {
+            const urls = {
+                intro: formatCdnUrl(introClip?.generatedAudioUrl),
+                video: formatCdnUrl(videoClip?.generatedAudioUrl),
+                outro: formatCdnUrl(outroClip?.generatedAudioUrl)
+            };
+            setClipAudioUrls(urls);
+            console.log('[Audio] Using generated audio URLs (CDN):', urls);
+        } else {
+            // Before speech generation: use raw audio for each clip if available
+            const urls = {
+                intro: formatCdnUrl(introClip?.rawAudioUrl),
+                video: formatCdnUrl(videoClip?.rawAudioUrl),
+                outro: formatCdnUrl(outroClip?.rawAudioUrl)
+            };
+            setClipAudioUrls(urls);
+            console.log('[Audio] Using raw audio URLs (CDN, speech not generated):', urls);
+            console.log('[Audio] Raw audio availability - intro:', !!introClip?.rawAudioUrl, 'video:', !!videoClip?.rawAudioUrl, 'outro:', !!outroClip?.rawAudioUrl);
+        }
+        
+        // Initialize active clip if not set and timeline exists
+        if (results?.timeline && !activeClip) {
+            const initialClip = getActiveClip(results.timeline, currentTime);
+            if (initialClip) {
+                console.log('[Audio] Setting initial active clip:', initialClip.name, 'at time', currentTime);
+                setActiveClip(initialClip);
+            }
+        }
+    }, [results]);
     const showTranscriptionPanel = activeSidebarItem === 'script';
     const showMusicPanel = activeSidebarItem === 'music';
 
@@ -91,34 +245,20 @@ export const ProjectScreen: React.FC<ProjectScreenProps> = ({ sessionId }) => {
             return;
         }
 
-        const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:8000';
-
         const startProcessing = async () => {
             try {
                 setPreparing(true);
                 const response = await processSession(sessionId);
 
-                // Get video and audio URLs from backend response
-                let videoUrlFromBackend = response.videoUrl;
-                let audioUrlFromBackend = response.audioUrl;
+                // Get video and audio URLs from backend response and convert to CDN URLs
+                const videoUrlFromBackend = response.videoUrl;
+                const audioUrlFromBackend = response.audioUrl;
 
-                // Add API_BASE prefix if URLs are relative
-                if (videoUrlFromBackend && !videoUrlFromBackend.startsWith('http')) {
-                    videoUrlFromBackend = videoUrlFromBackend.startsWith('/')
-                        ? `${API_BASE}${videoUrlFromBackend}`
-                        : `${API_BASE}/${videoUrlFromBackend}`;
-                }
-                if (audioUrlFromBackend && !audioUrlFromBackend.startsWith('http')) {
-                    audioUrlFromBackend = audioUrlFromBackend.startsWith('/')
-                        ? `${API_BASE}${audioUrlFromBackend}`
-                        : `${API_BASE}/${audioUrlFromBackend}`;
-                }
+                // Use CDN URLs - backend should provide S3 paths
+                const finalVideoUrl = formatCdnUrl(videoUrlFromBackend) || formatCdnUrl(`recordings/${sessionId}/video.webm`);
+                const finalAudioUrl = formatCdnUrl(audioUrlFromBackend) || formatCdnUrl(`recordings/${sessionId}/rawaudio/audio.webm`);
 
-                // Fallback to old pattern if backend doesn't provide URLs
-                const finalVideoUrl = videoUrlFromBackend || `${API_BASE}/uploads/video_${sessionId}.webm`;
-                const finalAudioUrl = audioUrlFromBackend || `${API_BASE}/uploads/audio_${sessionId}.webm`;
-
-                console.log('[Session] Setting URLs:', { finalVideoUrl, finalAudioUrl });
+                console.log('[Session] Setting CDN URLs:', { finalVideoUrl, finalAudioUrl });
 
                 setVideoUrl(finalVideoUrl);
                 setAudioUrl(finalAudioUrl);
@@ -128,6 +268,17 @@ export const ProjectScreen: React.FC<ProjectScreenProps> = ({ sessionId }) => {
                 }
 
                 setResults(response);
+                
+                // Initialize active clip to intro at time 0 if timeline exists
+                if ((response as any).timeline) {
+                    const initialClip = getActiveClip((response as any).timeline, 0);
+                    if (initialClip) {
+                        console.log('[Timeline] Setting initial clip:', initialClip.name);
+                        setActiveClip(initialClip);
+                        setCurrentTime(0);
+                    }
+                }
+                
                 setPreparing(false);
             } catch (err: any) {
                 console.error('[Session] Processing error:', err);
@@ -139,29 +290,119 @@ export const ProjectScreen: React.FC<ProjectScreenProps> = ({ sessionId }) => {
         startProcessing();
     }, [sessionId]);
 
-    // Synchronize video with audio
+    // Synchronize video with audio - Use RAF for smooth timeline updates
     useEffect(() => {
         const video = videoRef.current;
-        const audio = processedAudioUrl ? aiAudioRef.current : audioRef.current;
+        const audio = aiAudioRef.current;
 
         if (!video) return;
 
-        const handleTimeUpdate = () => {
-            setCurrentTime(video.currentTime);
-            // Keep audio in sync - only if audio exists and drift is significant
-            if (audio && !video.paused) {
-                const diff = Math.abs(video.currentTime - audio.currentTime);
-                if (diff > 0.5) { // Increased threshold to avoid jitter
-                    audio.currentTime = video.currentTime;
+        let rafId: number | null = null;
+        let lastSyncTime = 0;
+
+        const updateTimeline = () => {
+            if (results?.timeline && !video.paused) {
+                // Skip updates during manual seeks
+                if ((video as any).isSeeking) {
+                    rafId = requestAnimationFrame(updateTimeline);
+                    return;
                 }
+                
+                const timelineTime = videoTimeToTimelineTime(results.timeline, video.currentTime);
+                const mode = getPlaybackMode(results.timeline, timelineTime);
+                
+                // During video playback, continuously update for smooth 60fps timeline
+                if (mode === 'video') {
+                    setCurrentTime(timelineTime);
+                    
+                    // Sync audio periodically (not every frame)
+                    const now = performance.now();
+                    if (audio && now - lastSyncTime > 100) {
+                        const clip = getActiveClip(results.timeline, timelineTime);
+                        if (clip) {
+                            const clipRelativeTime = timelineTime - clip.start;
+                            const diff = Math.abs(clipRelativeTime - audio.currentTime);
+                            if (diff > 0.3) {
+                                audio.currentTime = clipRelativeTime;
+                            }
+                        }
+                        lastSyncTime = now;
+                    }
+                }
+                
+                rafId = requestAnimationFrame(updateTimeline);
             }
         };
 
-        const handleLoadedMetadata = () => {
-            const newDuration = video.duration;
-            if (newDuration && !isNaN(newDuration) && isFinite(newDuration)) {
-                setDuration(prev => prev || newDuration);
+        const handlePlay = () => {
+            rafId = requestAnimationFrame(updateTimeline);
+        };
+
+        const handlePause = () => {
+            if (rafId !== null) {
+                cancelAnimationFrame(rafId);
+                rafId = null;
             }
+        };
+
+        const handleTimeUpdate = () => {
+            // Skip updates during manual seeks
+            if ((video as any).isSeeking) return;
+            
+            // Fallback update when RAF isn't running (for non-video mode or paused)
+            if (results?.timeline) {
+                const mode = getPlaybackMode(results.timeline, currentTime);
+                if (mode !== 'video' || video.paused) {
+                    const timelineTime = videoTimeToTimelineTime(results.timeline, video.currentTime);
+                    setCurrentTime(timelineTime);
+                    setActiveClip(getActiveClip(results.timeline, timelineTime));
+                }
+            } else {
+                setCurrentTime(video.currentTime);
+            }
+        };
+
+        video.addEventListener('play', handlePlay);
+        video.addEventListener('pause', handlePause);
+        video.addEventListener('timeupdate', handleTimeUpdate);
+
+        // Start RAF if already playing
+        if (!video.paused) {
+            rafId = requestAnimationFrame(updateTimeline);
+        }
+
+        return () => {
+            video.removeEventListener('play', handlePlay);
+            video.removeEventListener('pause', handlePause);
+            video.removeEventListener('timeupdate', handleTimeUpdate);
+            if (rafId !== null) {
+                cancelAnimationFrame(rafId);
+            }
+        };
+    }, [results]);
+
+    // Video event handlers for metadata and ended events
+    useEffect(() => {
+        const video = videoRef.current;
+        const audio = aiAudioRef.current;
+        if (!video) return;
+
+        const handleLoadedMetadata = () => {
+            // Use timeline duration if available, otherwise fall back to raw video duration
+            if (results?.timeline) {
+                const timelineDuration = getTimelineDuration(results.timeline);
+                if (timelineDuration && !isNaN(timelineDuration) && isFinite(timelineDuration)) {
+                    setDuration(timelineDuration);
+                    console.log('[Video] Using timeline duration:', timelineDuration);
+                }
+            } else {
+                const newDuration = video.duration;
+                if (newDuration && !isNaN(newDuration) && isFinite(newDuration)) {
+                    setDuration(prev => prev || newDuration);
+                    console.log('[Video] Using raw video duration:', newDuration);
+                }
+            }
+            
             console.log('[Video] Loaded metadata - Width:', video.videoWidth, 'Height:', video.videoHeight);
             setRecordingDimensions({
                 recordingWidth: video.videoWidth,
@@ -173,21 +414,37 @@ export const ProjectScreen: React.FC<ProjectScreenProps> = ({ sessionId }) => {
         };
 
         const handleEnded = () => {
+            // When video ends, transition to outro if timeline exists
+            if (results?.timeline) {
+                const videoClip = results.timeline.clips.find((c: any) => c.name === 'video');
+                if (videoClip) {
+                    console.log('[Video] Video ended, transitioning to outro at', videoClip.end);
+                    // Set time to start of outro
+                    setCurrentTime(videoClip.end);
+                    const outroClip = getActiveClip(results.timeline, videoClip.end + 0.001);
+                    setActiveClip(outroClip);
+                    if (audio) audio.pause();
+                    // If still playing, manual loop will handle outro
+                    if (!isPlaying) {
+                        video.pause();
+                    }
+                    return;
+                }
+            }
+            // Fallback: stop playback
             setIsPlaying(false);
             if (audio) audio.pause();
             video.pause();
         };
 
-        video.addEventListener('timeupdate', handleTimeUpdate);
         video.addEventListener('loadedmetadata', handleLoadedMetadata);
         video.addEventListener('ended', handleEnded);
 
         return () => {
-            video.removeEventListener('timeupdate', handleTimeUpdate);
             video.removeEventListener('loadedmetadata', handleLoadedMetadata);
             video.removeEventListener('ended', handleEnded);
         };
-    }, [processedAudioUrl, videoUrl]);
+    }, [results, isPlaying]);
 
     // Parse and normalize effects when results are available
     useEffect(() => {
@@ -209,6 +466,84 @@ export const ProjectScreen: React.FC<ProjectScreenProps> = ({ sessionId }) => {
 
         setNormalizedEffects(normalized);
     }, [results, recordingDimensions]);
+
+    // Manual playback loop for intro/outro clips
+    useEffect(() => {
+        if (!isPlaying || !results?.timeline) return;
+
+        const video = videoRef.current;
+        const audio = aiAudioRef.current;
+        if (!video) return;
+
+        const playbackMode = getPlaybackMode(results.timeline, currentTime);
+        const clip = getActiveClip(results.timeline, currentTime);
+
+        // Manual time advancement for intro/outro (video is paused)
+        if (playbackMode === 'intro' || playbackMode === 'outro') {
+            // Ensure video is paused during intro/outro
+            if (!video.paused) {
+                video.pause();
+            }
+            
+            // Play audio for intro/outro if available
+            if (audio && clip) {
+                const clipRelativeTime = currentTime - clip.start;
+                
+                if (currentClipAudio) {
+                    // Audio is available for this clip
+                    if (audio.paused || Math.abs(audio.currentTime - clipRelativeTime) > 0.5) {
+                        audio.currentTime = clipRelativeTime;
+                        audio.play().catch(err => console.error(`[${playbackMode}] Audio play error:`, err));
+                        console.log(`[${playbackMode}] Playing audio from ${clipRelativeTime}s`);
+                    }
+                } else {
+                    // No audio for this clip, ensure audio is paused
+                    if (!audio.paused) {
+                        audio.pause();
+                        console.log(`[${playbackMode}] No audio available for this clip, audio paused`);
+                    }
+                }
+            }
+
+            const interval = setInterval(() => {
+                setCurrentTime(prev => {
+                    const next = prev + 0.016; // ~60fps advancement
+                    const clip = getActiveClip(results.timeline, prev);
+                    
+                    if (!clip) return prev;
+
+                    // Check if we've reached the end of current clip
+                    if (next >= clip.end) {
+                        if (clip.name === 'intro') {
+                            // Transition from intro to video clip
+                            console.log('[Playback] Transitioning from intro to video at time', clip.end);
+                            const nextClip = getActiveClip(results.timeline, clip.end + 0.001);
+                            if (nextClip && nextClip.name === 'video') {
+                                video.currentTime = 0;
+                                video.play().catch(err => console.error('Video play error:', err));
+                                if (audio) {
+                                    audio.currentTime = 0;
+                                    audio.play().catch(err => console.error('Audio play error:', err));
+                                }
+                                setActiveClip(nextClip);
+                                return clip.end; // Return exact clip boundary
+                            }
+                        } else if (clip.name === 'outro') {
+                            // End of outro, stop playback
+                            console.log('[Playback] Reached end of outro, stopping');
+                            setIsPlaying(false);
+                            return clip.end;
+                        }
+                    }
+                    
+                    return next;
+                });
+            }, 16); // ~60fps
+
+            return () => clearInterval(interval);
+        }
+        // During video clip, handleTimeUpdate manages currentTime from video.currentTime
+    }, [isPlaying, results?.timeline, currentTime, currentClipAudio]);
 
     // If backend provides recording dimensions, use them before metadata loads
     useEffect(() => {
@@ -335,42 +670,196 @@ export const ProjectScreen: React.FC<ProjectScreenProps> = ({ sessionId }) => {
         if (generatingSpeech) return;
 
         const video = videoRef.current;
-        const audio = processedAudioUrl ? aiAudioRef.current : audioRef.current;
+        const audio = aiAudioRef.current;
 
         if (!video) return;
 
         if (isPlaying) {
+            // Pause playback
             video.pause();
             if (audio) audio.pause();
             setIsPlaying(false);
         } else {
-            video.play()
-                .then(() => {
+            // Start/resume playback
+            if (results?.timeline) {
+                const mode = getPlaybackMode(results.timeline, currentTime);
+                const clip = getActiveClip(results.timeline, currentTime);
+                
+                // Update active clip state first
+                setActiveClip(clip);
+                
+                if (mode === 'intro' || mode === 'outro') {
+                    // For intro/outro, ensure video is paused, play audio, start manual advancement
+                    video.pause();
                     setIsPlaying(true);
-                    if (audio) {
-                        audio.currentTime = video.currentTime;
-                        audio.play().catch(err => console.error('Audio play error:', err));
+                    
+                    if (audio && clip) {
+                        const clipRelativeTime = Math.max(0, currentTime - clip.start);
+                        const audioUrl = clipAudioUrls[clip.name as 'intro' | 'video' | 'outro'];
+                        
+                        if (audioUrl) {
+                            // Ensure audio is loaded with correct source
+                            if (audio.src !== audioUrl) {
+                                console.log(`[Playback] Loading ${mode} audio:`, audioUrl);
+                                audio.src = audioUrl;
+                                audio.load();
+                                audio.onloadeddata = () => {
+                                    audio.currentTime = clipRelativeTime;
+                                    audio.play().catch(err => console.error(`[${mode}] Audio play error:`, err));
+                                    console.log(`[${mode}] Playing audio from ${clipRelativeTime}s`);
+                                };
+                            } else {
+                                audio.currentTime = clipRelativeTime;
+                                audio.play().catch(err => console.error(`[${mode}] Audio play error:`, err));
+                                console.log(`[${mode}] Playing audio from ${clipRelativeTime}s`);
+                            }
+                        } else {
+                            console.log(`[${mode}] No audio available, playing silently`);
+                        }
                     }
-                })
-                .catch(err => console.error('Video play error:', err));
+                } else if (mode === 'video') {
+                    // For video clip, calculate correct video time and play
+                    const videoTime = timelineToVideoTime(results.timeline, currentTime);
+                    const clipRelativeTime = Math.max(0, currentTime - (clip?.start || 0));
+                    console.log(`[Playback] Starting video at timeline ${currentTime}s (video time ${videoTime}s)`);
+                    
+                    video.currentTime = videoTime;
+                    video.play()
+                        .then(() => {
+                            setIsPlaying(true);
+                            if (audio && clip) {
+                                const audioUrl = clipAudioUrls[clip.name as 'intro' | 'video' | 'outro'];
+                                if (audioUrl) {
+                                    // Ensure audio is loaded
+                                    if (audio.src !== audioUrl) {
+                                        console.log(`[Playback] Loading video audio:`, audioUrl);
+                                        audio.src = audioUrl;
+                                        audio.load();
+                                        audio.onloadeddata = () => {
+                                            audio.currentTime = clipRelativeTime;
+                                            audio.play().catch(err => console.error('[Video] Audio play error:', err));
+                                            console.log(`[Video] Playing audio from ${clipRelativeTime}s`);
+                                        };
+                                    } else {
+                                        audio.currentTime = clipRelativeTime;
+                                        audio.play().catch(err => console.error('[Video] Audio play error:', err));
+                                        console.log(`[Video] Playing audio from ${clipRelativeTime}s`);
+                                    }
+                                }
+                            }
+                        })
+                        .catch(err => console.error('Video play error:', err));
+                }
+            } else {
+                // Fallback for non-timeline videos
+                video.play()
+                    .then(() => {
+                        setIsPlaying(true);
+                        if (audio) {
+                            audio.currentTime = video.currentTime;
+                            audio.play().catch(err => console.error('Audio play error:', err));
+                        }
+                    })
+                    .catch(err => console.error('Video play error:', err));
+            }
         }
-    }, [isPlaying, processedAudioUrl, generatingSpeech]);
+    }, [isPlaying, generatingSpeech, results, currentTime, clipAudioUrls]);
 
-    const handleSeek = useCallback((time: number) => {
+    const handleSeek = useCallback((timelineTime: number) => {
         // Disable seek during speech generation
         if (generatingSpeech) return;
 
         const video = videoRef.current;
-        const audio = processedAudioUrl ? aiAudioRef.current : audioRef.current;
+        const audio = aiAudioRef.current;
 
-        if (video) {
-            video.currentTime = time;
+        if (!video) return;
+
+        // Set seeking flag to prevent RAF/timeupdate from overwriting
+        (video as any).isSeeking = true;
+        setIsSeeking(true);
+
+        // Update timeline time immediately
+        setCurrentTime(timelineTime);
+
+        if (results?.timeline) {
+            const mode = getPlaybackMode(results.timeline, timelineTime);
+            const clip = getActiveClip(results.timeline, timelineTime);
+            
+            if (!clip) return;
+            
+            const clipRelativeTime = timelineTime - clip.start;
+            
+            // Update active clip first
+            const previousClip = activeClip;
+            setActiveClip(clip);
+
+            if (mode === 'intro' || mode === 'outro') {
+                // For intro/outro: pause video, sync audio to clip-relative time
+                video.pause();
+                
+                if (audio) {
+                    // If switching clips, mark pending seek time and wait for audio to load
+                    if (previousClip?.name !== clip.name) {
+                        (audio as any).pendingSeekTime = clipRelativeTime;
+                        console.log(`[Seek] ${mode} pending seek to ${clipRelativeTime}s (waiting for audio load)`);
+                    } else {
+                        // Same clip, seek immediately
+                        audio.currentTime = clipRelativeTime;
+                        console.log(`[Seek] ${mode} at timeline ${timelineTime}s, clip-relative ${clipRelativeTime}s`);
+                    }
+                    
+                    // Play audio if we're in playing state
+                    if (isPlaying) {
+                        audio.play().catch(err => console.error('Audio play error:', err));
+                    } else {
+                        audio.pause();
+                    }
+                }
+                
+                // Clear seeking flag after a short delay
+                setTimeout(() => {
+                    (video as any).isSeeking = false;
+                    setIsSeeking(false);
+                }, 100);
+            } else if (mode === 'video') {
+                // For video clip: convert to video time
+                const videoTime = timelineToVideoTime(results.timeline, timelineTime);
+                video.currentTime = videoTime;
+                
+                if (audio) {
+                    if (previousClip?.name !== clip.name) {
+                        (audio as any).pendingSeekTime = clipRelativeTime;
+                        console.log(`[Seek] video pending seek to ${clipRelativeTime}s (waiting for audio load)`);
+                    } else {
+                        audio.currentTime = clipRelativeTime;
+                    }
+                }
+                
+                console.log(`[Seek] video at timeline ${timelineTime}s, video time ${videoTime}s`);
+                
+                if (isPlaying) {
+                    video.play().catch(err => console.error('Video play error:', err));
+                    if (audio) audio.play().catch(err => console.error('Audio play error:', err));
+                }
+                
+                // Clear seeking flag after video seek completes
+                setTimeout(() => {
+                    (video as any).isSeeking = false;
+                    setIsSeeking(false);
+                }, 100);
+            }
+        } else {
+            // Fallback for non-timeline videos
+            video.currentTime = timelineTime;
+            if (audio) audio.currentTime = timelineTime;
+            
+            // Clear seeking flag
+            setTimeout(() => {
+                (video as any).isSeeking = false;
+                setIsSeeking(false);
+            }, 100);
         }
-        if (audio) {
-            audio.currentTime = time;
-        }
-        // Don't manually set currentTime state - let timeupdate event handle it
-    }, [processedAudioUrl, generatingSpeech]);
+    }, [generatingSpeech, results, isPlaying, activeClip]);
 
     const handleVolumeChange = useCallback((newVolume: number) => {
         const video = videoRef.current;
@@ -409,16 +898,41 @@ export const ProjectScreen: React.FC<ProjectScreenProps> = ({ sessionId }) => {
         setError(null);
 
         try {
-            const response = await generateSpeech(sessionId);
-            const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:8000';
-            let newAudioUrl = response.processedAudioUrl;
-
-            if (!newAudioUrl.startsWith('http')) {
-                newAudioUrl = newAudioUrl.startsWith('/') ? newAudioUrl : `/${newAudioUrl}`;
-                newAudioUrl = `${API_BASE}${newAudioUrl}`;
+            await generateSpeech(sessionId);
+            
+            // Refetch session data to get updated generatedAudioUrl fields
+            const sessionResponse = await fetch(`${API_BASE}/recordings/${sessionId}/session/instructions.json`);
+            const sessionData = await sessionResponse.json();
+            
+            // Update results with new clip narrations
+            setResults((prev: any) => ({
+                ...prev,
+                narrations: sessionData.narrations
+            }));
+            
+            // Load clip audio URLs from updated session data
+            const clipNarrations = sessionData.narrations;
+            if (clipNarrations && Array.isArray(clipNarrations)) {
+                const introClip = clipNarrations.find((c: any) => c.clipName === 'intro');
+                const videoClip = clipNarrations.find((c: any) => c.clipName === 'video');
+                const outroClip = clipNarrations.find((c: any) => c.clipName === 'outro');
+                
+                const urls = {
+                    intro: formatCdnUrl(introClip?.generatedAudioUrl),
+                    video: formatCdnUrl(videoClip?.generatedAudioUrl),
+                    outro: formatCdnUrl(outroClip?.generatedAudioUrl)
+                };
+                
+                setClipAudioUrls(urls);
+                
+                // Force audio reload by clearing current audio
+                setCurrentClipAudio(null);
+                
+                // Update hasSpeechGenerated state
+                setHasSpeechGenerated(true);
+                
+                console.log('[Audio] Updated clip audio URLs after speech generation (CDN):', urls);
             }
-
-            setProcessedAudioUrl(newAudioUrl);
 
             // Reset to beginning but don't auto-play - user can play manually
             if (video) {
@@ -428,6 +942,7 @@ export const ProjectScreen: React.FC<ProjectScreenProps> = ({ sessionId }) => {
                 aiAudioRef.current.currentTime = 0;
             }
             setCurrentTime(0);
+            setActiveClip(getActiveClip(results?.timeline, 0));
         } catch (err: any) {
             console.error('Speech generation error:', err);
             setError('Speech generation failed: ' + err.message);
@@ -575,7 +1090,7 @@ export const ProjectScreen: React.FC<ProjectScreenProps> = ({ sessionId }) => {
                         onSyncPointClick={handleSyncPointClick}
                         onGenerateScript={handleGenerateSpeech}
                         isGenerating={generatingSpeech}
-                        hasProcessedAudio={!!processedAudioUrl}
+                        hasProcessedAudio={hasSpeechGenerated}
                         currentTime={currentTime}
                         onRewrite={handleRewrite}
                         isRewriting={isRewriting}
@@ -597,7 +1112,7 @@ export const ProjectScreen: React.FC<ProjectScreenProps> = ({ sessionId }) => {
                 {/* Main Canvas */}
                 <MainCanvasSection
                     aspectRatio={aspectRatio}
-                    backgroundColor={backgroundColor}
+                    backgroundColor={currentBackgroundColor}
                     onAspectRatioChange={setAspectRatio}
                     onBackgroundColorChange={setBackgroundColor}
                     videoWidth={recordingDimensions?.recordingWidth}
@@ -635,6 +1150,7 @@ export const ProjectScreen: React.FC<ProjectScreenProps> = ({ sessionId }) => {
                         videoUrl={videoUrl}
                         videoRef={videoRef}
                         videoLayerRef={videoLayerRef}
+                        isVideoVisible={videoVisible}
                     />
                 </MainCanvasSection>
             </div>

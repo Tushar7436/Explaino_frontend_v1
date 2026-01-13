@@ -5,6 +5,7 @@ interface VideoLayerProps {
     videoUrl: string | null;
     videoRef: React.RefObject<HTMLVideoElement>;
     videoLayerRef?: React.RefObject<HTMLDivElement>;
+    isVideoVisible?: boolean; // NEW: Control video visibility for timeline clips
 }
 
 /**
@@ -14,7 +15,8 @@ interface VideoLayerProps {
 export const VideoLayer: React.FC<VideoLayerProps> = ({
     videoUrl,
     videoRef,
-    videoLayerRef
+    videoLayerRef,
+    isVideoVisible = true // Default to visible for backward compatibility
 }) => {
     return (
         <div
@@ -33,6 +35,9 @@ export const VideoLayer: React.FC<VideoLayerProps> = ({
                 // Transition is now managed dynamically in the rendering loop
                 // This will be overridden by the zoom transform when effects are active
                 transform: 'scale3d(1, 1, 1)',
+                // NEW: Control visibility for timeline clips (intro/outro)
+                opacity: isVideoVisible ? 1 : 0,
+                transition: 'opacity 0.3s ease',
             }}
         >
             {videoUrl ? (
@@ -134,11 +139,8 @@ export const VideoControls: React.FC<VideoControlsProps> = ({
                     <source src={audioUrl} type="audio/webm" />
                 </audio>
             )}
-            {processedAudioUrl && (
-                <audio ref={aiAudioRef} preload="auto" style={{ display: 'none' }}>
-                    <source src={processedAudioUrl} type="audio/mpeg" />
-                </audio>
-            )}
+            {/* AI Audio element - always rendered, src set dynamically via currentClipAudio */}
+            <audio ref={aiAudioRef} preload="auto" style={{ display: 'none' }} />
 
             {/* Simple Playback Controls - Clueso Style */}
             <div className="flex items-center gap-3">

@@ -46,7 +46,6 @@ export interface Instruction {
 }
 
 export interface Narration {
-    windowIndex: number;
     start: number;
     end: number;
     text: string;
