@@ -1,11 +1,26 @@
 import React, { useRef } from 'react';
 import { Play, Pause, SkipBack, SkipForward } from 'lucide-react';
+import { TextOverlayLayer } from './TextOverlayLayer';
+
+interface TextElement {
+    type: string;
+    content: string;
+    start: number;
+    end: number;
+    position: { x: number; y: number };
+    dimension: { width: number; height: number };
+    style: any;
+}
 
 interface VideoLayerProps {
     videoUrl: string | null;
     videoRef: React.RefObject<HTMLVideoElement>;
     videoLayerRef?: React.RefObject<HTMLDivElement>;
-    isVideoVisible?: boolean; // NEW: Control video visibility for timeline clips
+    isVideoVisible?: boolean;
+    textElements?: TextElement[];
+    currentTime?: number;
+    recordingWidth?: number;
+    recordingHeight?: number;
 }
 
 /**
@@ -16,8 +31,14 @@ export const VideoLayer: React.FC<VideoLayerProps> = ({
     videoUrl,
     videoRef,
     videoLayerRef,
-    isVideoVisible = true // Default to visible for backward compatibility
+    isVideoVisible = true,
+    textElements = [],
+    currentTime = 0,
+    recordingWidth = 1920,
+    recordingHeight = 1080
 }) => {
+    console.log('[VideoLayer] Text elements:', textElements.length, 'Current time:', currentTime);
+    
     return (
         <div
             ref={videoLayerRef}
@@ -27,6 +48,7 @@ export const VideoLayer: React.FC<VideoLayerProps> = ({
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
+                position: 'relative',
                 // CRITICAL: Camera-zoom requires transform-origin at center
                 transformOrigin: 'center center',
                 // GPU acceleration hints
@@ -58,6 +80,13 @@ export const VideoLayer: React.FC<VideoLayerProps> = ({
                     </div>
                 </div>
             )}
+            {/* Text Overlay Layer - Always rendered */}
+            <TextOverlayLayer
+                textElements={textElements}
+                currentTime={currentTime}
+                recordingWidth={recordingWidth}
+                recordingHeight={recordingHeight}
+            />
         </div>
     );
 };

@@ -109,6 +109,7 @@ export const ProjectScreen: React.FC<ProjectScreenProps> = ({ sessionId }) => {
 
     // ============== EFFECTS STATE ==============
     const [normalizedEffects, setNormalizedEffects] = useState<any[]>([]);
+    const [textElements, setTextElements] = useState<any[]>([]);
     const [recordingDimensions, setRecordingDimensions] = useState<RecordingDimensions | null>(null);
 
     // ============== TIMELINE STATE ==============
@@ -146,6 +147,7 @@ export const ProjectScreen: React.FC<ProjectScreenProps> = ({ sessionId }) => {
                 audio.onerror = (e) => {
                     console.error(`[Audio] Error loading ${clipName} audio:`, e);
                     console.error('[Audio] Failed URL:', audioUrl);
+                    console.error('[Audio] Speech generated:', hasSpeechGenerated);
                 };
                 
                 // Add loaded handler
@@ -221,6 +223,7 @@ export const ProjectScreen: React.FC<ProjectScreenProps> = ({ sessionId }) => {
             setClipAudioUrls(urls);
             console.log('[Audio] Using raw audio URLs (CDN, speech not generated):', urls);
             console.log('[Audio] Raw audio availability - intro:', !!introClip?.rawAudioUrl, 'video:', !!videoClip?.rawAudioUrl, 'outro:', !!outroClip?.rawAudioUrl);
+            console.log('[Audio] Formatted URLs - intro:', urls.intro, 'video:', urls.video, 'outro:', urls.outro);
         }
         
         // Initialize active clip if not set and timeline exists
@@ -447,9 +450,32 @@ export const ProjectScreen: React.FC<ProjectScreenProps> = ({ sessionId }) => {
 
     // Parse and normalize effects when results are available
     useEffect(() => {
-        if (!results?.displayEffects || !recordingDimensions) return;
+        if (!recordingDimensions) return;
 
-        const filtered = results.displayEffects
+        // Extract effects from displayElements or fall back to legacy displayEffects
+        let effectsArray: any[] = [];
+        let textElementsArray: any[] = [];
+        
+        if (results?.displayElements) {
+            // New format: flatten effects from clip-based structure
+            effectsArray = results.displayElements.flatMap((element: any) => element.effects || []);
+            console.log('[Effects] Extracted from displayElements:', effectsArray.length, 'effects');
+            
+            // Extract text elements from displayElements
+            textElementsArray = results.displayElements.flatMap((element: any) => element.elements || []);
+            console.log('[TextElements] Extracted from displayElements:', textElementsArray.length, 'text elements');
+        } else if (results?.displayEffects) {
+            // Legacy format: use displayEffects directly
+            effectsArray = results.displayEffects;
+            console.log('[Effects] Using legacy displayEffects:', effectsArray.length, 'effects');
+        }
+        
+        // Store text elements in state
+        setTextElements(textElementsArray);
+
+        if (effectsArray.length === 0) return;
+
+        const filtered = effectsArray
             .filter((effect: any) => effect.target?.bounds && effect.style?.zoom?.enabled);
 
         const normalized = filtered.map((effect: any) => {
@@ -572,7 +598,9 @@ export const ProjectScreen: React.FC<ProjectScreenProps> = ({ sessionId }) => {
         const UPDATE_INTERVAL = 16; // ~60fps, but throttled
 
         const renderFrame = () => {
-            const time = video.currentTime;
+            // CRITICAL: Convert video.currentTime (raw video time: 0-46s) to timeline time (3-49s)
+            // Effects in instructions.json are stored in timeline coordinates (shifted by intro duration)
+            const time = videoTimeToTimelineTime(results?.timeline, video.currentTime);
             const now = performance.now();
 
             // Throttle updates to reduce CPU load
@@ -660,7 +688,7 @@ export const ProjectScreen: React.FC<ProjectScreenProps> = ({ sessionId }) => {
             // Clean up GPU hint
             if (videoLayer) videoLayer.style.willChange = 'auto';
         };
-    }, [normalizedEffects]);
+    }, [normalizedEffects, results?.timeline]);
 
     // ============== HANDLERS ==============
 
@@ -931,6 +959,14 @@ export const ProjectScreen: React.FC<ProjectScreenProps> = ({ sessionId }) => {
                 setHasSpeechGenerated(true);
                 
                 console.log('[Audio] Updated clip audio URLs after speech generation (CDN):', urls);
+                
+                // CRITICAL: Reset timeline to start (intro clip) to play from beginning
+                setCurrentTime(0);
+                const introClipData = results?.timeline?.clips?.find((c: any) => c.name === 'intro');
+                if (introClipData) {
+                    setActiveClip(introClipData);
+                    console.log('[Audio] Reset to intro clip at timeline 0 after speech generation');
+                }
             }
 
             // Reset to beginning but don't auto-play - user can play manually
@@ -971,9 +1007,22 @@ export const ProjectScreen: React.FC<ProjectScreenProps> = ({ sessionId }) => {
             // Import instruction generator
             const { generateZoomInstructions } = await import('../../utils/instructionGenerator');
 
-            // Generate instructions from displayEffects
+            // Extract effects from displayElements or fall back to legacy displayEffects
+            let effectsArray: any[] = [];
+            
+            if (results.displayElements) {
+                // New format: flatten effects from clip-based structure
+                effectsArray = results.displayElements.flatMap((element: any) => element.effects || []);
+                console.log('[Export] Extracted from displayElements:', effectsArray.length, 'effects');
+            } else if (results.displayEffects) {
+                // Legacy format: use displayEffects directly
+                effectsArray = results.displayEffects;
+                console.log('[Export] Using legacy displayEffects:', effectsArray.length, 'effects');
+            }
+
+            // Generate instructions from effects
             const instructions = generateZoomInstructions(
-                results.displayEffects || [],
+                effectsArray,
                 {
                     width: recordingDimensions.recordingWidth,
                     height: recordingDimensions.recordingHeight
@@ -1123,6 +1172,10 @@ export const ProjectScreen: React.FC<ProjectScreenProps> = ({ sessionId }) => {
                         videoRef={videoRef}
                         videoLayerRef={videoLayerRef}
                         isVideoVisible={videoVisible}
+                        textElements={textElements}
+                        currentTime={currentTime}
+                        recordingWidth={recordingDimensions?.recordingWidth}
+                        recordingHeight={recordingDimensions?.recordingHeight}
                     />
                 </MainCanvasSection>
             </div>
