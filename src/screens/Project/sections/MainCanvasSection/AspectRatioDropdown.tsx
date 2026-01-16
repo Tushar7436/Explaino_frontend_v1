@@ -92,12 +92,12 @@ export const AspectRatioDropdown: React.FC<AspectRatioDropdownProps> = ({
             {/* Dropdown Button */}
             <button
                 onClick={() => setIsOpen(!isOpen)}
-                className="flex items-center gap-2 px-3 py-2 bg-[#3b3b50] hover:bg-[#4a4a5e] rounded-lg transition-all duration-200"
+                className="flex items-center gap-1.5 px-2 py-1 bg-[#3b3b50] hover:bg-[#4a4a5e] rounded-md transition-all duration-200"
             >
-                <RectangleHorizontal size={16} className="text-gray-300" />
-                <span className="text-white text-sm font-medium">{getCurrentLabel()}</span>
+                <RectangleHorizontal size={12} className="text-gray-300" />
+                <span className="text-white text-xs font-medium">{getCurrentLabel()}</span>
                 <svg
-                    className={`w-4 h-4 text-gray-400 transition-transform duration-200 ${isOpen ? 'rotate-180' : ''}`}
+                    className={`w-3 h-3 text-gray-400 transition-transform duration-200 ${isOpen ? 'rotate-180' : ''}`}
                     fill="none"
                     stroke="currentColor"
                     viewBox="0 0 24 24"
@@ -108,12 +108,12 @@ export const AspectRatioDropdown: React.FC<AspectRatioDropdownProps> = ({
 
             {/* Dropdown Menu */}
             {isOpen && (
-                <div className="absolute top-full mt-2 left-0 w-[280px] bg-[#2a2a3e] rounded-lg shadow-2xl border border-[#3b3b50] py-2 z-50 animate-fade-in">
+                <div className="absolute top-full mt-1 left-0 w-[220px] bg-[#2a2a3e] rounded-md shadow-2xl border border-[#3b3b50] py-1 z-50 animate-fade-in">
                     {aspectRatioOptions.map((option) => (
                         <button
                             key={option.value}
                             onClick={() => handleSelect(option.value)}
-                            className={`w-full flex items-center gap-3 px-4 py-2.5 transition-all duration-200 ${
+                            className={`w-full flex items-center gap-2 px-3 py-1.5 transition-all duration-200 ${
                                 currentRatio === option.value
                                     ? 'bg-[#4a4a5e] text-white'
                                     : 'text-gray-300 hover:bg-[#3b3b50] hover:text-white'
@@ -128,13 +128,13 @@ export const AspectRatioDropdown: React.FC<AspectRatioDropdownProps> = ({
                                 }`}
                                 style={{
                                     aspectRatio: option.iconAspect,
-                                    width: option.iconAspect.startsWith('9/') || option.iconAspect.startsWith('4/5') || option.iconAspect.startsWith('3/4') ? '14px' : '24px',
+                                    width: option.iconAspect.startsWith('9/') || option.iconAspect.startsWith('4/5') || option.iconAspect.startsWith('3/4') ? '10px' : '18px',
                                     height: 'auto'
                                 }}
                             />
 
                             {/* Label */}
-                            <span className="flex-1 text-left text-sm">
+                            <span className="flex-1 text-left text-xs">
                                 {option.label} <span className="text-gray-500">{option.description}</span>
                             </span>
                         </button>

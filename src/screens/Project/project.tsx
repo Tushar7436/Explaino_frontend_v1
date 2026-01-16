@@ -11,7 +11,9 @@ import { VideoLayer, VideoControls } from './sections/VideoPlayerSection';
 
 // Services & Hooks
 import { useProcessingWebSocket } from '../../hooks/useProcessingWebSocket';
-import { processSession, generateSpeech, exportVideo } from '../../services/backend-api';
+import { useChangeTracking } from '../../hooks/useChangeTracking';
+import { generateSpeech, exportVideo } from '../../services/backend-api';
+import { getJSONPath } from '../../utils/changeTrackingHelpers';
 import {
     normalizeCoordinates,
     calculateZoomTransform,
@@ -80,13 +82,11 @@ export const ProjectScreen: React.FC<ProjectScreenProps> = ({ sessionId }) => {
     // ============== VIDEO STATE ==============
     const [videoUrl, setVideoUrl] = useState<string | null>(null);
     const [audioUrl, setAudioUrl] = useState<string | null>(null);
-    const [processedAudioUrl, setProcessedAudioUrl] = useState<string | null>(null);
     const [isPlaying, setIsPlaying] = useState(false);
     const [currentTime, setCurrentTime] = useState(0);
     const [duration, setDuration] = useState(0);
     const [volume, setVolume] = useState(1);
     const [isMuted, setIsMuted] = useState(false);
-    const [isSeeking, setIsSeeking] = useState(false);
     
     // ============== CLIP-BASED AUDIO ==============
     const [clipAudioUrls, setClipAudioUrls] = useState<{
@@ -109,8 +109,30 @@ export const ProjectScreen: React.FC<ProjectScreenProps> = ({ sessionId }) => {
     const [preparing, setPreparing] = useState(true);
     const [generatingSpeech, setGeneratingSpeech] = useState(false);
     const [exporting, setExporting] = useState(false);
-    const [results, setResults] = useState<any>(null);
     const [error, setError] = useState<string | null>(null);
+    const [cdnData, setCdnData] = useState<any>(null); // Raw CDN data, hook will merge with localStorage
+    const [cacheBustVersion, setCacheBustVersion] = useState<number>(Date.now()); // Force refetch after saves
+    
+    // ============== CHANGE TRACKING (replaces results state) ==============
+    const {
+        results,
+        setResults,
+        trackChange,
+        saveChanges,
+        changeStack,
+        isSaving,
+        isMerging,
+        lastSavedAt,
+        hasUnsavedChanges
+    } = useChangeTracking(
+        sessionId || null, 
+        cdnData,
+        () => {
+            // Trigger refetch with cache-busting after save
+            console.log('[Project] Save complete, triggering cache-busted refetch...');
+            setCacheBustVersion(Date.now());
+        }
+    );
 
     // ============== EFFECTS STATE ==============
     const [normalizedEffects, setNormalizedEffects] = useState<any[]>([]);
@@ -137,7 +159,8 @@ export const ProjectScreen: React.FC<ProjectScreenProps> = ({ sessionId }) => {
             return;
         }
         
-        console.log('[handleBorderRadiusChange] Current activeClip.media[0].borderRadius:', activeClip.media[0]?.borderRadius);
+        const oldBorderRadius = activeClip.media[0]?.borderRadius || 0;
+        console.log('[handleBorderRadiusChange] Old borderRadius:', oldBorderRadius, '→ New:', value);
         
         // Update the active clip's media borderRadius
         const updatedClip = {
@@ -163,6 +186,15 @@ export const ProjectScreen: React.FC<ProjectScreenProps> = ({ sessionId }) => {
                     ...results.timeline,
                     clips: updatedClips
                 }
+            });
+            
+            // Track change
+            trackChange({
+                type: 'borderRadius',
+                clipName: activeClip.name,
+                path: getJSONPath('borderRadius', activeClip.name),
+                oldValue: oldBorderRadius,
+                newValue: value
             });
         }
     };
@@ -192,6 +224,28 @@ export const ProjectScreen: React.FC<ProjectScreenProps> = ({ sessionId }) => {
             setIsVideoSelected(false);
         }
     }, [activeClip?.name, currentClipHasMedia]);
+    
+    // Sync activeClip with merged results (after localStorage merge)
+    useEffect(() => {
+        if (!results?.timeline || !activeClip) return;
+        
+        // Find the updated clip from merged results
+        const updatedClip = getActiveClip(results.timeline, currentTime);
+        
+        if (updatedClip && updatedClip.name === activeClip.name) {
+            // Check if backgroundColor or other properties changed
+            const bgChanged = updatedClip.backgroundColor !== activeClip.backgroundColor;
+            const borderRadiusChanged = updatedClip.media?.[0]?.borderRadius !== activeClip.media?.[0]?.borderRadius;
+            
+            if (bgChanged || borderRadiusChanged) {
+                console.log('[ActiveClip] Syncing with merged results:', {
+                    old: { bg: activeClip.backgroundColor, br: activeClip.media?.[0]?.borderRadius },
+                    new: { bg: updatedClip.backgroundColor, br: updatedClip.media?.[0]?.borderRadius }
+                });
+                setActiveClip(updatedClip);
+            }
+        }
+    }, [results, currentTime]); // Trigger when results change (after merge)
     
     // Update current clip audio when active clip changes
     useEffect(() => {
@@ -330,22 +384,55 @@ export const ProjectScreen: React.FC<ProjectScreenProps> = ({ sessionId }) => {
         const maxRetries = 30; // 30 retries = ~60 seconds with exponential backoff
         
         const loadInstructionsFromCDN = async () => {
-            const instructionsUrl = `${CDN_BASE}/recordings/${sessionId}/session/instructions.json`;
+            const cdnUrl = `${CDN_BASE}/recordings/${sessionId}/session/instructions.json?v=${cacheBustVersion}`;
+            const backendUrl = `${API_BASE}/api/session/${sessionId}/instructions?v=${cacheBustVersion}`;
             
             const attemptFetch = async (): Promise<boolean> => {
                 if (isCancelled) return false;
                 
                 try {
-                    console.log(`[Session] Attempt ${retryCount + 1}/${maxRetries}: Fetching instructions.json from CDN`);
+                    console.log(`[Session] Attempt ${retryCount + 1}/${maxRetries}: Fetching instructions.json`);
                     
-                    const response = await fetch(instructionsUrl, {
-                        cache: 'no-store' // Prevent caching to always get fresh data
-                    });
+                    let response: Response | undefined;
+                    let sessionData: any;
                     
-                    if (response.ok) {
-                        const sessionData = await response.json();
+                    // Try CDN first with aggressive cache-busting headers
+                    try {
+                        console.log('[Session] Trying CDN:', cdnUrl);
+                        response = await fetch(cdnUrl, { 
+                            cache: 'no-cache', // Forces revalidation with server
+                            headers: {
+                                'Cache-Control': 'no-cache, no-store, must-revalidate',
+                                'Pragma': 'no-cache',
+                                'Expires': '0'
+                            }
+                        });
                         
-                        if (isCancelled) return false;
+                        if (response?.ok) {
+                            sessionData = await response.json();
+                            console.log('[Session] ✅ Loaded from CDN');
+                        }
+                    } catch (cdnErr) {
+                        console.warn('[Session] CDN failed (CORS or network), trying backend proxy...', cdnErr);
+                    }
+                    
+                    // Fallback to backend proxy if CDN failed
+                    if (!sessionData) {
+                        console.log('[Session] Trying backend:', backendUrl);
+                        response = await fetch(backendUrl, { 
+                            cache: 'no-cache',
+                            headers: {
+                                'Cache-Control': 'no-cache, no-store, must-revalidate'
+                            }
+                        });
+                        
+                        if (response?.ok) {
+                            sessionData = await response.json();
+                            console.log('[Session] ✅ Loaded from backend proxy');
+                        }
+                    }
+                    
+                    if (sessionData && !isCancelled) {
                         
                         console.log('[Session] Successfully loaded instructions.json:', sessionData);
 
@@ -384,9 +471,9 @@ export const ProjectScreen: React.FC<ProjectScreenProps> = ({ sessionId }) => {
                             setDuration(sessionData.videoDuration);
                         }
 
-                        console.log('[Session] Setting results from instructions.json...');
-                        setResults(sessionData);
-                        console.log('[Session] Results set successfully');
+                        console.log('[Session] Setting CDN data (hook will merge with localStorage)...');
+                        setCdnData(sessionData);
+                        console.log('[Session] CDN data set, hook will apply localStorage changes');
                         
                         // Initialize active clip to intro at time 0 if timeline exists
                         if (sessionData.timeline) {
@@ -404,7 +491,9 @@ export const ProjectScreen: React.FC<ProjectScreenProps> = ({ sessionId }) => {
                     }
                     
                     // File not ready yet (404, 403, etc.)
-                    console.log(`[Session] Instructions.json not ready yet (status: ${response.status}), will retry...`);
+                    if (response) {
+                        console.log(`[Session] Instructions.json not ready yet (status: ${response.status}), will retry...`);
+                    }
                     return false;
                 } catch (err: any) {
                     console.warn(`[Session] Fetch attempt ${retryCount + 1} failed:`, err.message);
@@ -446,7 +535,7 @@ export const ProjectScreen: React.FC<ProjectScreenProps> = ({ sessionId }) => {
         return () => {
             isCancelled = true;
         };
-    }, [sessionId]);
+    }, [sessionId, cacheBustVersion]); // Refetch when cacheBustVersion changes
 
     // Synchronize video with audio - Use RAF for smooth timeline updates
     useEffect(() => {
@@ -505,7 +594,7 @@ export const ProjectScreen: React.FC<ProjectScreenProps> = ({ sessionId }) => {
 
         const handleTimeUpdate = () => {
             // Skip updates during manual seeks
-            if ((video as any).isSeeking) return;
+            if ((video as any).seeking) return;
             
             // Fallback update when RAF isn't running (for non-video mode or paused)
             if (results?.timeline) {
@@ -971,7 +1060,6 @@ export const ProjectScreen: React.FC<ProjectScreenProps> = ({ sessionId }) => {
 
         // Set seeking flag to prevent RAF/timeupdate from overwriting
         (video as any).isSeeking = true;
-        setIsSeeking(true);
 
         // Update timeline time immediately
         setCurrentTime(timelineTime);
@@ -1014,7 +1102,6 @@ export const ProjectScreen: React.FC<ProjectScreenProps> = ({ sessionId }) => {
                 // Clear seeking flag after a short delay
                 setTimeout(() => {
                     (video as any).isSeeking = false;
-                    setIsSeeking(false);
                 }, 100);
             } else if (mode === 'video') {
                 // For video clip: convert to video time
@@ -1040,7 +1127,6 @@ export const ProjectScreen: React.FC<ProjectScreenProps> = ({ sessionId }) => {
                 // Clear seeking flag after video seek completes
                 setTimeout(() => {
                     (video as any).isSeeking = false;
-                    setIsSeeking(false);
                 }, 100);
             }
         } else {
@@ -1051,30 +1137,29 @@ export const ProjectScreen: React.FC<ProjectScreenProps> = ({ sessionId }) => {
             // Clear seeking flag
             setTimeout(() => {
                 (video as any).isSeeking = false;
-                setIsSeeking(false);
             }, 100);
         }
     }, [generatingSpeech, results, isPlaying, activeClip]);
 
     const handleVolumeChange = useCallback((newVolume: number) => {
         const video = videoRef.current;
-        const audio = processedAudioUrl ? aiAudioRef.current : audioRef.current;
+        const audio = audioRef.current;
 
         setVolume(newVolume);
         setIsMuted(newVolume === 0);
         if (video) video.volume = newVolume;
         if (audio) audio.volume = newVolume;
-    }, [processedAudioUrl]);
+    }, []);
 
     const handleToggleMute = useCallback(() => {
         const video = videoRef.current;
-        const audio = processedAudioUrl ? aiAudioRef.current : audioRef.current;
+        const audio = audioRef.current;
 
         const newMuted = !isMuted;
         setIsMuted(newMuted);
         if (video) video.muted = newMuted;
         if (audio) audio.muted = newMuted;
-    }, [isMuted, processedAudioUrl]);
+    }, [isMuted]);
 
     const handleGenerateSpeech = async () => {
         if (!sessionId) return;
@@ -1204,7 +1289,7 @@ export const ProjectScreen: React.FC<ProjectScreenProps> = ({ sessionId }) => {
             // Call export API with background color and aspect ratio
             const response = await exportVideo(sessionId, instructions, recordingDimensions, {
                 backgroundColor,
-                aspectRatio
+                aspectRatio: aspectRatio as AspectRatio
             });
 
             console.log('[Export] Success:', response);
@@ -1230,12 +1315,19 @@ export const ProjectScreen: React.FC<ProjectScreenProps> = ({ sessionId }) => {
     };
 
     // ============== LOADING STATE ==============
-    if (preparing) {
+    if (preparing || isMerging) {
         return (
             <div className="h-screen bg-[#1e1e2e] flex flex-col items-center justify-center gap-6">
                 <div className="w-16 h-16 border-4 border-indigo-500 border-t-transparent rounded-full animate-spin" />
-                <h1 className="text-white text-xl font-medium">Preparing your video...</h1>
-                {progress && (
+                <h1 className="text-white text-xl font-medium">
+                    {isMerging ? 'Restoring your changes...' : 'Preparing your video...'}
+                </h1>
+                {isMerging && changeStack.length > 0 && (
+                    <p className="text-gray-400 text-sm">
+                        Applying {changeStack.length} unsaved change{changeStack.length !== 1 ? 's' : ''}
+                    </p>
+                )}
+                {!isMerging && progress && (
                     <p className="text-gray-400 text-sm">{progress.message}</p>
                 )}
             </div>
@@ -1261,8 +1353,20 @@ export const ProjectScreen: React.FC<ProjectScreenProps> = ({ sessionId }) => {
                 activeTab={activeTab}
                 onTabChange={setActiveTab}
                 onExport={handleExport}
+                onSave={async () => {
+                    try {
+                        await saveChanges();
+                        console.log('[Save] Changes saved successfully');
+                    } catch (err: any) {
+                        console.error('[Save] Failed:', err);
+                        alert('Failed to save changes: ' + err.message);
+                    }
+                }}
                 isExporting={exporting}
                 canExport={!!results && !!recordingDimensions}
+                isSaving={isSaving}
+                hasUnsavedChanges={hasUnsavedChanges}
+                lastSavedAt={lastSavedAt}
             />
 
             {/* Main Content Area */}
@@ -1309,6 +1413,8 @@ export const ProjectScreen: React.FC<ProjectScreenProps> = ({ sessionId }) => {
                     onBackgroundColorChange={(color: string) => {
                         // Update the background color of the current active clip
                         if (activeClip && results?.timeline?.clips) {
+                            const oldColor = activeClip.backgroundColor || backgroundColor;
+                            
                             const updatedClips = results.timeline.clips.map((clip: any) => {
                                 if (clip.name === activeClip.name) {
                                     return { ...clip, backgroundColor: color };
@@ -1326,13 +1432,22 @@ export const ProjectScreen: React.FC<ProjectScreenProps> = ({ sessionId }) => {
                             
                             setResults(updatedResults);
                             
+                            // Track change
+                            trackChange({
+                                type: 'backgroundColor',
+                                clipName: activeClip.name,
+                                path: getJSONPath('backgroundColor', activeClip.name),
+                                oldValue: oldColor,
+                                newValue: color
+                            });
+                            
                             // Update the active clip with the new backgroundColor immediately
                             setActiveClip({
                                 ...activeClip,
                                 backgroundColor: color
                             });
                         } else {
-                            // Fallback to global ba && currentClipHasMediackground color if no active clip
+                            // Fallback to global background color if no active clip
                             setBackgroundColor(color);
                         }
                     }}
@@ -1354,7 +1469,6 @@ export const ProjectScreen: React.FC<ProjectScreenProps> = ({ sessionId }) => {
                     controls={
                         <VideoControls
                             audioUrl={audioUrl}
-                            processedAudioUrl={processedAudioUrl}
                             isPlaying={isPlaying}
                             currentTime={currentTime}
                             duration={duration}
@@ -1371,7 +1485,6 @@ export const ProjectScreen: React.FC<ProjectScreenProps> = ({ sessionId }) => {
                     }
                 >
                     <VideoLayer
-                        key={`video-${activeClip?.name}-${activeClip?.media?.[0]?.borderRadius ?? 3}`}
                         videoUrl={videoUrl}
                         videoRef={videoRef}
                         videoLayerRef={videoLayerRef}

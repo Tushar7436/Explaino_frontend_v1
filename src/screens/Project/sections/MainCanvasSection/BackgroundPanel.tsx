@@ -222,44 +222,44 @@ export const BackgroundPanel: React.FC<BackgroundPanelProps> = ({
             />
 
             {/* Side Panel */}
-            <div className="fixed left-0 top-0 bottom-0 w-[420px] bg-[#1a1a2e] border-r border-[#2a2a3e] z-50 flex flex-col animate-slide-in">
+            <div className="fixed left-0 top-0 bottom-0 w-[340px] bg-[#1a1a2e] border-r border-[#2a2a3e] z-50 flex flex-col animate-slide-in">
                 {/* Header */}
-                <div className="h-16 flex items-center justify-between px-6 border-b border-[#2a2a3e]">
-                    <div className="flex items-center gap-3">
+                <div className="h-10 flex items-center justify-between px-4 border-b border-[#2a2a3e]">
+                    <div className="flex items-center gap-2">
                         <button
                             onClick={onClose}
-                            className="p-2 text-gray-400 hover:text-white hover:bg-[#2a2a3e] rounded-lg transition-all duration-200"
+                            className="p-1.5 text-gray-400 hover:text-white hover:bg-[#2a2a3e] rounded-md transition-all duration-200"
                         >
-                            <ArrowLeft size={18} />
+                            <ArrowLeft size={14} />
                         </button>
-                        <h2 className="text-white text-lg font-semibold">Background</h2>
+                        <h2 className="text-white text-sm font-semibold">Background</h2>
                     </div>
                     <button
                         onClick={onClose}
-                        className="p-2 text-gray-400 hover:text-white hover:bg-[#2a2a3e] rounded-lg transition-all duration-200"
+                        className="p-1.5 text-gray-400 hover:text-white hover:bg-[#2a2a3e] rounded-md transition-all duration-200"
                     >
-                        <X size={18} />
+                        <X size={14} />
                     </button>
                 </div>
 
                 {/* Content */}
                 <div className="flex-1 overflow-y-auto">
                     {/* Settings Section */}
-                    <div className="p-6 border-b border-[#2a2a3e]">
-                        <h3 className="text-gray-400 text-xs font-semibold tracking-wider uppercase mb-4">
+                    <div className="p-4 border-b border-[#2a2a3e]">
+                        <h3 className="text-gray-400 text-[10px] font-semibold tracking-wider uppercase mb-3">
                             SETTINGS
                         </h3>
-                        <div className="flex items-center justify-between p-3 bg-[#0d0d15] rounded-lg">
-                            <span className="text-white text-sm">Use same background for all clips</span>
+                        <div className="flex items-center justify-between p-2 bg-[#0d0d15] rounded-md">
+                            <span className="text-white text-xs">Use same background for all clips</span>
                             <button
                                 onClick={() => setUseForAllClips(!useForAllClips)}
-                                className={`relative w-12 h-6 rounded-full transition-colors duration-200 ${
+                                className={`relative w-10 h-5 rounded-full transition-colors duration-200 ${
                                     useForAllClips ? 'bg-[#ec4899]' : 'bg-[#3b3b50]'
                                 }`}
                             >
                                 <div
-                                    className={`absolute top-1 left-1 w-4 h-4 bg-white rounded-full transition-transform duration-200 ${
-                                        useForAllClips ? 'translate-x-6' : 'translate-x-0'
+                                    className={`absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full transition-transform duration-200 ${
+                                        useForAllClips ? 'translate-x-5' : 'translate-x-0'
                                     }`}
                                 />
                             </button>
@@ -267,24 +267,24 @@ export const BackgroundPanel: React.FC<BackgroundPanelProps> = ({
                     </div>
 
                     {/* Backgrounds Section */}
-                    <div className="p-6">
-                        <h3 className="text-gray-400 text-xs font-semibold tracking-wider uppercase mb-4">
+                    <div className="p-4">
+                        <h3 className="text-gray-400 text-[10px] font-semibold tracking-wider uppercase mb-3">
                             BACKGROUNDS
                         </h3>
 
                         {/* Upload Button */}
-                        <button className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-[#4f46e5] hover:bg-[#4338ca] text-white rounded-lg font-medium transition-all duration-200 mb-4">
-                            <Plus size={18} />
+                        <button className="w-full flex items-center justify-center gap-1.5 px-3 py-2 bg-[#4f46e5] hover:bg-[#4338ca] text-white rounded-md font-medium text-xs transition-all duration-200 mb-3">
+                            <Plus size={14} />
                             <span>Upload media</span>
                         </button>
 
                         {/* Tabs */}
-                        <div className="flex items-center gap-1 mb-6 p-1 bg-[#0d0d15] rounded-lg">
+                        <div className="flex items-center gap-0.5 mb-4 p-0.5 bg-[#0d0d15] rounded-md">
                             {(['Color', 'Image', 'Video'] as BackgroundTab[]).map((tab) => (
                                 <button
                                     key={tab}
                                     onClick={() => setActiveTab(tab)}
-                                    className={`flex-1 px-4 py-2 rounded-md text-sm font-medium transition-all duration-200 ${
+                                    className={`flex-1 px-3 py-1.5 rounded text-xs font-medium transition-all duration-200 ${
                                         activeTab === tab
                                             ? 'bg-[#2a2a3e] text-white'
                                             : 'text-gray-400 hover:text-white'
@@ -297,18 +297,18 @@ export const BackgroundPanel: React.FC<BackgroundPanelProps> = ({
 
                         {/* Color Tab Content */}
                         {activeTab === 'Color' && (
-                            <div className="space-y-4">
+                            <div className="space-y-3">
                                 {/* Primary Color Display */}
                                 <div className="flex items-center justify-between">
-                                    <span className="text-gray-400 text-sm">Primary Color</span>
-                                    <div className="flex items-center gap-2">
+                                    <span className="text-gray-400 text-xs">Primary Color</span>
+                                    <div className="flex items-center gap-1.5">
                                         <div
-                                            className="w-8 h-8 rounded-full border-2 border-white/20 cursor-pointer hover:scale-110 transition-transform"
+                                            className="w-6 h-6 rounded-full border-2 border-white/20 cursor-pointer hover:scale-110 transition-transform"
                                             style={{ backgroundColor: currentColor }}
                                             onClick={() => setShowColorPicker(true)}
                                         />
                                         <span 
-                                            className="text-white text-sm font-mono cursor-pointer hover:text-[#ec4899] transition-colors"
+                                            className="text-white text-xs font-mono cursor-pointer hover:text-[#ec4899] transition-colors"
                                             onClick={() => setShowColorPicker(true)}
                                         >
                                             {currentColor.toUpperCase()}
@@ -317,7 +317,7 @@ export const BackgroundPanel: React.FC<BackgroundPanelProps> = ({
                                 </div>
 
                                 {/* Color Presets Grid - No Label */}
-                                <div className="grid grid-cols-3 gap-3">
+                                <div className="grid grid-cols-3 gap-2">
                                     {colorPresets.map((color) => (
                                         <button
                                             key={color}
@@ -325,7 +325,7 @@ export const BackgroundPanel: React.FC<BackgroundPanelProps> = ({
                                                 onColorChange(color);
                                                 setHexInput(color.replace('#', ''));
                                             }}
-                                            className={`aspect-video rounded-lg transition-all duration-200 hover:scale-105 ${
+                                            className={`aspect-video rounded-md transition-all duration-200 hover:scale-105 ${
                                                 currentColor.toUpperCase() === color.toUpperCase()
                                                     ? 'ring-2 ring-[#ec4899] ring-offset-2 ring-offset-[#1a1a2e]'
                                                     : ''
@@ -339,19 +339,19 @@ export const BackgroundPanel: React.FC<BackgroundPanelProps> = ({
 
                         {/* Image Tab Content */}
                         {activeTab === 'Image' && (
-                            <div className="text-center py-12">
-                                <Upload size={48} className="mx-auto text-gray-600 mb-4" />
-                                <p className="text-gray-400 text-sm">Upload background images</p>
-                                <p className="text-gray-500 text-xs mt-2">Coming soon...</p>
+                            <div className="text-center py-8">
+                                <Upload size={36} className="mx-auto text-gray-600 mb-3" />
+                                <p className="text-gray-400 text-xs">Upload background images</p>
+                                <p className="text-gray-500 text-[10px] mt-1">Coming soon...</p>
                             </div>
                         )}
 
                         {/* Video Tab Content */}
                         {activeTab === 'Video' && (
-                            <div className="text-center py-12">
-                                <Upload size={48} className="mx-auto text-gray-600 mb-4" />
-                                <p className="text-gray-400 text-sm">Upload background videos</p>
-                                <p className="text-gray-500 text-xs mt-2">Coming soon...</p>
+                            <div className="text-center py-8">
+                                <Upload size={36} className="mx-auto text-gray-600 mb-3" />
+                                <p className="text-gray-400 text-xs">Upload background videos</p>
+                                <p className="text-gray-500 text-[10px] mt-1">Coming soon...</p>
                             </div>
                         )}
                     </div>

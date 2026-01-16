@@ -1414,6 +1414,516 @@ server {
 
 ---
 
+## Video Selection System
+
+### Overview
+The video selection system allows users to click on the video to select it, showing a visual border and enabling editing features like border radius adjustment.
+
+### Components
+
+#### VideoSelectionBorder.tsx
+**Location**: `src/screens/Project/sections/MainCanvasSection/VideoSelectionBorder.tsx`
+
+**Purpose**: Renders a sky-blue border around the selected video with corner handles (like design tools).
+
+**Props**:
+```typescript
+interface VideoSelectionBorderProps {
+    isSelected: boolean;
+    videoDimensions: { width: number; height: number } | null;
+}
+```
+
+**Styling**:
+- Color: Sky blue (`#38BDF8`) matching Clueso design system
+- Border: Always sharp corners (0px radius), never rounded
+- Positioning: Calculated based on actual rendered video dimensions
+- Handles: Small circles at each corner for visual feedback
+
+**Implementation**:
+```tsx
+export const VideoSelectionBorder: React.FC<VideoSelectionBorderProps> = ({ 
+    isSelected, 
+    videoDimensions 
+}) => {
+    if (!isSelected || !videoDimensions) return null;
+    
+    const { width, height } = videoDimensions;
+    const handleSize = 8; // Size of corner handles
+    
+    return (
+        <div 
+            style={{
+                position: 'absolute',
+                border: '2px solid #38BDF8', // Sky blue
+                borderRadius: '0px', // Always sharp corners
+                pointerEvents: 'none',
+                // Position using calc() based on actual video size
+                top: `calc(50% - ${height / 2}px)`,
+                left: `calc(50% - ${width / 2}px)`,
+                width: `${width}px`,
+                height: `${height}px`,
+            }}
+        >
+            {/* Corner handles */}
+            <div style={{ /* top-left handle */ }} />
+            <div style={{ /* top-right handle */ }} />
+            <div style={{ /* bottom-left handle */ }} />
+            <div style={{ /* bottom-right handle */ }} />
+        </div>
+    );
+};
+```
+
+### Responsive Positioning
+
+The selection border automatically adapts to:
+
+1. **Video Aspect Ratio**: Calculates actual rendered size using object-contain logic
+2. **Window Resize**: Updates dimensions on window resize events
+3. **Timeline Changes**: Uses ResizeObserver to detect container size changes
+4. **Zoom Effects**: Maintains position during video zoom transformations
+
+**Dimension Calculation** (VideoPlayerSection.tsx):
+```typescript
+const updateVideoDimensions = () => {
+    const video = videoRef.current;
+    const container = videoLayerRef.current;
+    
+    if (video && container) {
+        // Get video's natural aspect ratio
+        const videoAspect = video.videoWidth / video.videoHeight;
+        const containerWidth = container.clientWidth;
+        const containerHeight = container.clientHeight;
+        const containerAspect = containerWidth / containerHeight;
+        
+        let renderedWidth, renderedHeight;
+        
+        // Calculate actual rendered size (object-contain logic)
+        if (videoAspect > containerAspect) {
+            // Video is wider - limited by width
+            renderedWidth = containerWidth;
+            renderedHeight = containerWidth / videoAspect;
+        } else {
+            // Video is taller - limited by height
+            renderedHeight = containerHeight;
+            renderedWidth = containerHeight * videoAspect;
+        }
+        
+        setVideoDimensions({ width: renderedWidth, height: renderedHeight });
+    }
+};
+
+// Update on:
+video.addEventListener('loadedmetadata', updateVideoDimensions);
+window.addEventListener('resize', updateVideoDimensions);
+
+// ResizeObserver for timeline height changes
+const resizeObserver = new ResizeObserver(updateVideoDimensions);
+resizeObserver.observe(container);
+```
+
+### Click Handling
+
+**VideoLayer Component**:
+```typescript
+const handleVideoClick = (e: React.MouseEvent) => {
+    if (!hasMedia) return; // Don't select empty clips
+    
+    e.stopPropagation(); // Prevent deselection
+    if (onVideoClick) {
+        onVideoClick(); // Notify parent
+    }
+};
+```
+
+**Project Component**:
+```typescript
+const [isVideoSelected, setIsVideoSelected] = useState(false);
+
+const handleVideoClick = () => {
+    setIsVideoSelected(true);
+};
+
+const handleDocumentClick = (e: MouseEvent) => {
+    // Deselect when clicking outside
+    if (!(e.target as HTMLElement).closest('.video-layer')) {
+        setIsVideoSelected(false);
+    }
+};
+
+useEffect(() => {
+    document.addEventListener('click', handleDocumentClick);
+    return () => document.removeEventListener('click', handleDocumentClick);
+}, []);
+```
+
+---
+
+## Border Radius Feature
+
+### Overview
+Users can adjust video corner rounding from 0% (sharp corners) to 20% (very rounded) using a slider in the toolbar.
+
+### UI Components
+
+#### RoundingDropdown.tsx
+**Location**: `src/screens/Project/sections/MainCanvasSection/RoundingDropdown.tsx`
+
+**Purpose**: Dropdown panel with a slider for adjusting border radius.
+
+**Features**:
+- Range: 0-20% (percentage of video dimensions)
+- Default: 3% (subtle rounding)
+- Real-time preview
+- Visual feedback with rounded rectangle icon
+
+**Implementation**:
+```tsx
+interface RoundingDropdownProps {
+    isOpen: boolean;
+    onClose: () => void;
+    value: number; // 0-20
+    onChange: (value: number) => void;
+}
+
+export const RoundingDropdown: React.FC<RoundingDropdownProps> = ({
+    isOpen,
+    onClose,
+    value,
+    onChange
+}) => {
+    if (!isOpen) return null;
+    
+    return (
+        <div className="absolute top-full mt-2 bg-[#2a2a3e] rounded-lg shadow-lg p-4 w-64">
+            <div className="flex items-center justify-between mb-3">
+                <span className="text-white text-sm font-medium">Corner Rounding</span>
+                <span className="text-gray-400 text-sm">{value}%</span>
+            </div>
+            
+            <input
+                type="range"
+                min="0"
+                max="20"
+                value={value}
+                onChange={(e) => onChange(Number(e.target.value))}
+                className="w-full accent-sky-500"
+            />
+            
+            <div className="flex justify-between text-xs text-gray-500 mt-2">
+                <span>Sharp</span>
+                <span>Rounded</span>
+            </div>
+        </div>
+    );
+};
+```
+
+#### VideoEditToolbar Integration
+**Location**: `src/screens/Project/sections/MainCanvasSection/VideoEditToolbar.tsx`
+
+```tsx
+const [isRoundingDropdownOpen, setIsRoundingDropdownOpen] = useState(false);
+
+<button
+    onClick={() => setIsRoundingDropdownOpen(!isRoundingDropdownOpen)}
+    className={`... ${isRoundingDropdownOpen ? 'bg-[#4a4a5e]' : 'bg-[#3b3b50]'}`}
+>
+    <RectangleHorizontal size={18} />
+</button>
+
+<RoundingDropdown
+    isOpen={isRoundingDropdownOpen}
+    onClose={() => setIsRoundingDropdownOpen(false)}
+    value={roundingValue}
+    onChange={onRoundingChange}
+/>
+```
+
+### Data Flow
+
+**1. MainCanvasSection State**:
+```typescript
+const [roundingValue, setRoundingValue] = useState(() => {
+    return activeClip?.media?.[0]?.borderRadius ?? 3;
+});
+
+// Sync with activeClip changes
+useEffect(() => {
+    const newValue = activeClip?.media?.[0]?.borderRadius ?? 3;
+    setRoundingValue(newValue);
+}, [activeClip]);
+```
+
+**2. Handler Chain**:
+```
+User drags slider
+    ↓
+RoundingDropdown.onChange(value)
+    ↓
+VideoEditToolbar.onRoundingChange(value)
+    ↓
+MainCanvasSection.onBorderRadiusChange(value)
+    ↓
+ProjectScreen.handleBorderRadiusChange(value)
+    ↓
+Update timeline.clips[].media[].borderRadius
+```
+
+**3. ProjectScreen Implementation**:
+```typescript
+const handleBorderRadiusChange = (value: number) => {
+    console.log('[BorderRadius] Changing to:', value, 'for clip:', activeClip?.name);
+    
+    if (!results?.timeline || !activeClip) return;
+    
+    // Update timeline state
+    const updatedTimeline = {
+        ...results.timeline,
+        clips: results.timeline.clips.map((clip: any) => {
+            if (clip.name === activeClip.name) {
+                return {
+                    ...clip,
+                    media: clip.media?.map((m: any) => ({
+                        ...m,
+                        borderRadius: value
+                    }))
+                };
+            }
+            return clip;
+        })
+    };
+    
+    setResults({
+        ...results,
+        timeline: updatedTimeline
+    });
+};
+```
+
+**4. Video Element Application**:
+```tsx
+<video
+    style={{
+        borderRadius: `${borderRadius}%`,
+        overflow: 'hidden',
+    }}
+/>
+```
+
+### Important Notes
+
+- **Only video gets rounded**: Selection border stays sharp (always 0px)
+- **Container doesn't round**: BorderRadius applied to `<video>` element, not wrapper
+- **Percentage-based**: Uses % units for responsive scaling
+- **Per-clip setting**: Each clip (intro, video, outro) has its own borderRadius
+- **Default values**:
+  - Intro/outro: 0% (sharp corners for background-only clips)
+  - Video: 3% (subtle rounding)
+
+### React Key Optimization
+
+To force re-renders when borderRadius changes:
+
+```typescript
+<VideoLayer
+    key={`video-${activeClip?.name}-${activeClip?.media?.[0]?.borderRadius}`}
+    borderRadius={activeClip?.media?.[0]?.borderRadius ?? 3}
+/>
+```
+
+This ensures the video element updates immediately when the slider changes.
+
+---
+
+## Beginner's Guide to Explaino Frontend
+
+### What is Explaino Frontend?
+
+The Explaino frontend is a **video editor web application** that lets users:
+1. View screen recordings
+2. Edit narration scripts
+3. Add music
+4. Adjust video styling (border radius, aspect ratio, background color)
+5. Preview zoom effects in real-time
+6. Export polished tutorial videos
+
+Think of it as **iMovie meets Loom** - a simple yet powerful video editor specifically designed for tutorial videos.
+
+### Technology Stack (What We Use)
+
+| Technology | Purpose | Why We Use It |
+|------------|---------|---------------|
+| **React 18.2** | UI framework | Makes building interactive UIs easier |
+| **TypeScript** | Programming language | JavaScript with type safety (catches bugs before runtime) |
+| **Vite 6** | Build tool | Super fast development server and builds |
+| **Tailwind CSS 3.4** | Styling | Utility-first CSS framework for rapid UI development |
+| **Apollo Client** | GraphQL client | Connects to Hasura database for user auth |
+| **WebSocket** | Real-time updates | Shows processing progress (10%, 20%, 30%...) |
+
+### Project Structure (What's Inside)
+
+```
+Explaino_frontend_v1/
+├── src/
+│   ├── index.tsx                     # App entry point
+│   ├── components/
+│   │   ├── AuthRoute.tsx            # Protect routes (login required)
+│   │   └── ui/                      # Reusable components
+│   │       ├── button.tsx
+│   │       ├── input.tsx
+│   │       ├── select.tsx
+│   │       └── ...
+│   ├── screens/
+│   │   ├── Login/                   # Phone auth with OTP
+│   │   ├── MericodSaasRecord/       # Dashboard
+│   │   └── Project/                 # Video editor (main screen)
+│   │       ├── project.tsx          # Main component (1400+ lines)
+│   │       └── sections/
+│   │           ├── HeaderSection/
+│   │           ├── SideNavigationSection/
+│   │           ├── TranscriptionSection/
+│   │           ├── MusicSection/
+│   │           ├── MainCanvasSection/
+│   │           │   ├── MainCanvasSection.tsx
+│   │           │   ├── VideoEditToolbar.tsx
+│   │           │   ├── RoundingDropdown.tsx  # NEW: Border radius slider
+│   │           │   ├── AspectRatioDropdown.tsx
+│   │           │   ├── BackgroundPanel.tsx
+│   │           │   ├── TimelineSection.tsx
+│   │           │   └── VideoSelectionBorder.tsx  # NEW: Selection UI
+│   │           └── VideoPlayerSection/
+│   │               ├── VideoPlayerSection.tsx
+│   │               ├── VideoLayer.tsx
+│   │               ├── VideoControls.tsx
+│   │               └── TextOverlayLayer.tsx
+│   ├── hooks/
+│   │   └── useProcessingWebSocket.js  # Real-time progress
+│   ├── services/
+│   │   └── backend-api.js             # API calls
+│   ├── utils/
+│   │   ├── effectProcessor.js         # Zoom calculations
+│   │   ├── timelineUtils.ts           # Time conversions
+│   │   └── instructionGenerator.js    # Export format
+│   └── lib/
+│       ├── apolloClient.ts            # GraphQL setup
+│       ├── authManager.ts             # JWT tokens
+│       └── utils.ts
+├── public/
+│   ├── index.html
+│   └── favicon.ico
+├── package.json
+├── vite.config.ts
+├── tailwind.config.js
+└── tsconfig.json
+```
+
+### Key Concepts
+
+#### 1. **Screens**
+- **Login**: Phone number + OTP authentication
+- **Dashboard**: Project list, templates
+- **Project Editor**: Main video editing interface
+
+#### 2. **Sections**
+The Project Editor is divided into sections:
+- **Header**: Title, export button
+- **Sidebar**: Script, music, elements, templates
+- **Main Canvas**: Video preview with toolbar
+- **Timeline**: Clip sequence, effects, narrations
+
+#### 3. **Timeline**
+- 3 clips: Intro → Video → Outro
+- Total duration: Intro (3s) + Video (39s) + Outro (3s) = 45s
+- Each clip can have different audio, effects, and styling
+
+#### 4. **Effects**
+- **Zoom**: Highlight UI elements
+- Real-time preview using CSS transforms
+- GPU-accelerated for smooth 60fps
+
+#### 5. **Audio System**
+- **Clip-based audio**: Each clip (intro, video, outro) has its own audio file
+- **Raw audio**: Original voice recording
+- **AI audio**: Generated TTS (Text-to-Speech) after script refinement
+- **Audio switching**: Automatically switches audio when crossing clip boundaries
+
+#### 6. **State Management**
+- Uses React Hooks (`useState`, `useEffect`, `useCallback`, `useRef`)
+- No Redux/Zustand - keeps it simple
+- 50+ state variables in ProjectScreen
+
+### How Video Playback Works
+
+**Timeline vs Video Time**:
+```
+Timeline Time (0-45s):
+[===Intro===][========Video========][===Outro===]
+0s         3s                    42.255s      45.255s
+
+Video Time (0-39s):
+            [========Video========]
+            0s                39.255s
+```
+
+**Conversion Functions**:
+```typescript
+// Timeline → Video
+timelineToVideoTime(10) → 7  // 10s timeline = 7s video (10 - 3 offset)
+
+// Video → Timeline
+videoTimeToTimelineTime(7) → 10  // 7s video = 10s timeline (7 + 3 offset)
+```
+
+**Playback Modes**:
+- **Intro/Outro**: Manual 60fps loop (video paused, audio plays)
+- **Video**: Native video playback (video + audio sync)
+
+### Common Questions (FAQ)
+
+**Q: What is JSX/TSX?**
+A: JSX is HTML-like syntax in JavaScript. TSX is JSX with TypeScript. Instead of writing `React.createElement()`, we write `<div>Hello</div>`.
+
+**Q: What is a component?**
+A: A reusable piece of UI. Like LEGO blocks - you build complex UIs by combining simple components.
+
+**Q: What is useState?**
+A: A React Hook that lets components remember data. Like a variable that causes re-renders when changed.
+
+**Q: What is useEffect?**
+A: A React Hook that runs code when something changes. Like an event listener.
+
+**Q: What is useRef?**
+A: A React Hook that gives you direct access to DOM elements (like `document.getElementById`).
+
+**Q: What is Tailwind CSS?**
+A: A utility-first CSS framework. Instead of writing `.button { padding: 10px; ... }`, you write `<button className="p-4 bg-blue-500">`.
+
+**Q: What is TypeScript?**
+A: JavaScript with types. Catches errors before you run the code. Example:
+```typescript
+// JavaScript
+function add(a, b) { return a + b; }
+add("5", 3); // "53" (oops!)
+
+// TypeScript
+function add(a: number, b: number): number { return a + b; }
+add("5", 3); // ERROR: Type 'string' is not assignable to type 'number'
+```
+
+**Q: What is GPU acceleration?**
+A: Using the graphics card (not just CPU) to render effects. Makes animations 10x smoother. We use:
+```typescript
+style={{
+    transform: 'scale3d(1.5, 1.5, 1)',  // Use 3D transform
+    willChange: 'transform',             // Tell browser to optimize
+    backfaceVisibility: 'hidden'         // Prevent flickering
+}}
+```
+
+---
+
 ## Security
 
 1. **JWT tokens** with automatic refresh (24h lifespan)
@@ -1424,4 +1934,21 @@ server {
 
 ---
 
-**End of Frontend Documentation**
+## Future Enhancements
+
+- [ ] Keyboard shortcuts (Space = play/pause, Left/Right = seek)
+- [ ] Undo/redo system
+- [ ] Multi-track audio (background music + voice)
+- [ ] Custom fonts for text overlays
+- [ ] Fade transitions between clips
+- [ ] Video trimming (cut intro/outro)
+- [ ] Export presets (1080p, 720p, 4K)
+- [ ] Collaboration (multiple users editing)
+- [ ] Comments/annotations on timeline
+- [ ] Version history
+
+---
+
+**End of Frontend Documentation**  
+**Version**: 2.0  
+**Last Updated**: January 2026

@@ -1,5 +1,5 @@
 import React from 'react';
-import { Sparkles, X, MoreHorizontal } from 'lucide-react';
+import { Sparkles, MoreHorizontal } from 'lucide-react';
 
 interface WordTiming {
     word: string;
@@ -68,7 +68,7 @@ export const TranscriptionSection: React.FC<TranscriptionSectionProps> = ({
     const outroClip = clips.find(c => c.name === 'outro');
 
     // Helper to render narrations for a clip
-    const renderNarrations = (clipNarrations: Narration[], clipName: string, clipIndex: number, clipText?: string) => {
+    const renderNarrations = (clipNarrations: Narration[], _clipName: string, clipIndex: number, clipText?: string) => {
         // If no narrations but we have intro/outro text, create a temporary narration
         if ((!clipNarrations || clipNarrations.length === 0) && clipText) {
             clipNarrations = [{
@@ -80,45 +80,42 @@ export const TranscriptionSection: React.FC<TranscriptionSectionProps> = ({
         
         if (!clipNarrations || clipNarrations.length === 0) {
             return (
-                <div className="text-gray-500 text-[12px]">
-                    Coming soon...
+                <div className="text-gray-500 text-[12px] italic">
+                    No content yet...
                 </div>
             );
         }
 
         return (
-            <div className="text-[15px] leading-7 text-gray-300 tracking-[0.01em] antialiased">
+            <div className="text-[13px] leading-6 text-gray-200 font-normal">
                 {clipNarrations.map((narration, idx) => {
                     // Don't show sync point badge for first narration in each clip
                     const isFirstInClip = idx === 0;
                     
                     return (
-                        <span key={idx} className={`relative inline ${!isFirstInClip ? 'ml-6' : ''}`}>
-                            {/* Sync Point - Always show, skip for first narration in clip */}
+                        <span key={idx} className={`relative inline`}>
+                            {/* Sync Point - small icon badge */}
                             {!isFirstInClip && (
                                 <button
                                     onClick={() => onSyncPointClick(narration.start)}
-                                    className="absolute -left-5 top-1 inline-flex items-center justify-center w-4 h-4 rounded text-[11px] bg-amber-500/90 text-gray-900 transition-all duration-150 hover:bg-amber-400 hover:scale-110 z-10"
-                                    title={`Sync point at ${narration.start.toFixed(2)}s`}
+                                    className="inline-flex items-center justify-center mx-1 w-4 h-4 rounded-full bg-amber-500 text-white transition-all duration-150 hover:bg-amber-400 hover:scale-110 align-middle"
+                                    title={`Jump to ${narration.start.toFixed(2)}s`}
                                 >
-                                    <span>✦</span>
+                                    <svg width="8" height="8" viewBox="0 0 24 24" fill="currentColor">
+                                        <circle cx="12" cy="12" r="4" />
+                                        <path d="M12 2v4M12 18v4M2 12h4M18 12h4" stroke="currentColor" strokeWidth="2" fill="none" />
+                                    </svg>
                                 </button>
                             )}
                             
                             {hasProcessedAudio ? (
                                 // AFTER SPEECH GENERATION: Word-level highlighting on full text
                                 <>
-                                    {/* Always render full text from narration.text */}
                                     {narration.text.split(' ').map((word, wordIdx) => {
-                                        // Clean the word for matching (remove punctuation)
                                         const cleanWord = word.toLowerCase().replace(/[.,!?;:]/g, '');
-                                        
-                                        // Find matching word timing data if available
-                                        // Use findIndex to track which word we're matching to avoid duplicates
                                         const wordData = narration.words && narration.words.length > 0
                                             ? narration.words.find(w => w.word.toLowerCase() === cleanWord)
                                             : null;
-                                        
                                         const isCurrentWord = wordData 
                                             ? currentTime >= wordData.start && currentTime < wordData.end
                                             : false;
@@ -126,10 +123,10 @@ export const TranscriptionSection: React.FC<TranscriptionSectionProps> = ({
                                         return (
                                             <React.Fragment key={wordIdx}>
                                                 <span
-                                                    className={`transition-colors duration-100 ${
+                                                    className={`transition-all duration-100 ${
                                                         isCurrentWord
-                                                            ? 'text-white font-bold bg-amber-500/20 px-0.5 rounded'
-                                                            : 'text-gray-300'
+                                                            ? 'text-white font-semibold bg-indigo-500/30 px-0.5 rounded'
+                                                            : 'text-gray-200'
                                                     }`}
                                                 >
                                                     {word}
@@ -141,8 +138,7 @@ export const TranscriptionSection: React.FC<TranscriptionSectionProps> = ({
                                     {' '}
                                 </>
                             ) : (
-                                // BEFORE SPEECH GENERATION: Plain text, no sync points, no highlighting
-                                <span className="text-gray-300">
+                                <span className="text-gray-200">
                                     {narration.text}{' '}
                                 </span>
                             )}
@@ -153,133 +149,117 @@ export const TranscriptionSection: React.FC<TranscriptionSectionProps> = ({
         );
     };
 
+    // Script card component
+    const ScriptCard: React.FC<{
+        number: number;
+        title: string;
+        children: React.ReactNode;
+    }> = ({ number, title, children }) => (
+        <div className="rounded-xl border border-white/5 bg-gradient-to-b from-white/[0.03] to-transparent overflow-hidden transition-all duration-200 hover:border-white/10 hover:bg-white/[0.04] group">
+            {/* Card Header */}
+            <div className="px-4 py-3 flex items-center justify-between border-b border-white/5">
+                <div className="flex items-center gap-3">
+                    <span className="flex items-center justify-center w-6 h-6 rounded-lg bg-white/5 text-gray-400 text-xs font-medium">
+                        {number}
+                    </span>
+                    <span className="text-white text-sm font-medium">{title}</span>
+                </div>
+                <button className="p-1 rounded-md text-gray-400 hover:text-white hover:bg-white/10 transition-all opacity-0 group-hover:opacity-100">
+                    <MoreHorizontal size={14} />
+                </button>
+            </div>
+            {/* Card Content */}
+            <div className="px-4 py-3">
+                {children}
+            </div>
+        </div>
+    );
+
     return (
-        <div className="w-96 bg-[#252538] border-r border-[#2a2a3e] flex flex-col animate-slide-in">
+        <div className="w-[360px] bg-gradient-to-b from-[#1e1e2e] to-[#1a1a28] border-r border-white/5 flex flex-col">
+            {/* Header with collapse button */}
+            <div className="px-4 py-3 flex items-center justify-between border-b border-white/5">
+                <button 
+                    onClick={onClose}
+                    className="p-1.5 rounded-lg text-gray-400 hover:text-white hover:bg-white/10 transition-all"
+                    title="Collapse panel"
+                >
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                        <path d="M11 19l-7-7 7-7M18 19l-7-7 7-7" />
+                    </svg>
+                </button>
+            </div>
+
             {/* Toolbar - Generate Speech & AI Rewrite */}
-            <div className="px-4 py-3 border-b border-[#2a2a3e] flex items-center gap-2">
-                <div className="flex-1 min-w-0 flex items-center gap-2">
+            <div className="px-4 py-3 border-b border-white/5">
+                <div className="flex items-center gap-2">
                     {/* Generate Speech Button */}
                     <button
                         onClick={onGenerateScript}
                         disabled={isGenerating || hasProcessedAudio}
-                        className={`h-10 flex-1 min-w-0 inline-flex items-center justify-center gap-2 px-3 rounded-lg text-sm font-medium transition-all duration-200 ${
+                        className={`h-9 inline-flex items-center justify-center gap-1.5 px-3 rounded-lg text-xs font-medium transition-all duration-200 whitespace-nowrap ${
                             isGenerating
-                                ? 'bg-[#4a4a5e] text-gray-400 cursor-not-allowed'
+                                ? 'bg-white/10 text-gray-400 cursor-not-allowed'
                                 : hasProcessedAudio
-                                    ? 'bg-green-600 text-white cursor-not-allowed'
-                                    : 'bg-indigo-500 hover:bg-indigo-600 text-white'
+                                    ? 'bg-emerald-500/20 text-emerald-400 cursor-not-allowed border border-emerald-500/30'
+                                    : 'bg-gradient-to-r from-indigo-500 to-purple-500 hover:from-indigo-600 hover:to-purple-600 text-white shadow-lg shadow-indigo-500/25'
                         }`}
                     >
-                    {isGenerating ? (
-                        <>
-                            <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                            <span className="truncate">Generating...</span>
-                        </>
-                    ) : hasProcessedAudio ? (
-                        <>
-                            <span>✅</span>
-                            <span className="truncate">Generated</span>
-                        </>
-                    ) : (
-                        <>
-                            <span className="text-base">၊၊||၊</span>
-                            <span className="truncate">Generate Speech</span>
-                        </>
-                    )}
-                    </button>
-
-                    {/* AI Rewrite Button - Removed dropdown for now */}
-                    <button className="h-10 shrink-0 inline-flex items-center justify-center gap-2 px-3 bg-[#3b3b50] hover:bg-[#4a4a5e] text-white rounded-lg text-sm font-medium transition-all duration-200 whitespace-nowrap">
-                        <Sparkles size={15} />
-                        <span>AI Rewrite</span>
-                        {/* <ChevronDown size={14} /> */}
-                    </button>
-
-                    {/* Add Button - Commented out for now */}
-                    {/* <button className="p-2 bg-[#3b3b50] hover:bg-[#4a4a5e] text-white rounded-lg transition-all duration-200">
-                        <Plus size={18} />
-                    </button> */}
-                </div>
-
-                <button
-                    onClick={onClose}
-                    className="h-10 w-10 inline-flex items-center justify-center shrink-0 text-gray-400 hover:text-white hover:bg-[#3b3b50] rounded-lg transition-all duration-200"
-                    aria-label="Close script"
-                    title="Close"
-                >
-                    <X size={15} />
-                </button>
-            </div>
-
-            {/* Content */}
-            <div className="flex-1 overflow-y-auto px-3 py-3 space-y-3">
-                {/* Intro Section */}
-                <div className="rounded-xl border border-[#2a2a3e] bg-[#1e1e2e]/30 overflow-hidden transition-all duration-200 hover:border-[#3b3b50] hover:bg-[#1e1e2e]/40 hover:-translate-y-[1px]">
-                    <div className="px-4 py-3 flex items-center justify-between">
-                        <div className="flex items-center gap-3">
-                            <span className="text-gray-500 text-xs font-medium">1</span>
-                            <span className="text-white text-sm font-semibold tracking-tight">Intro</span>
-                        </div>
-                        <button className="h-8 w-8 inline-flex items-center justify-center text-gray-400 hover:text-white hover:bg-[#3b3b50] rounded-lg transition-all duration-200">
-                            <MoreHorizontal size={16} />
-                        </button>
-                    </div>
-                    <div className="px-4 pb-4">
-                        {renderNarrations(introClip?.narrations || [], 'intro', 0, intro)}
-                    </div>
-                </div>
-
-                {/* Video Section */}
-                <div className="rounded-xl border border-[#2a2a3e] bg-[#1e1e2e]/30 overflow-hidden transition-all duration-200 hover:border-[#3b3b50] hover:bg-[#1e1e2e]/40">
-                    <div className="px-4 py-3 flex items-center justify-between">
-                        <div className="flex items-center gap-3">
-                            <span className="text-gray-500 text-xs font-medium">2</span>
-                            <span className="text-white text-sm font-semibold tracking-tight">Video</span>
-                        </div>
-                        <button className="h-8 w-8 inline-flex items-center justify-center text-gray-400 hover:text-white hover:bg-[#3b3b50] rounded-lg transition-all duration-200">
-                            <MoreHorizontal size={16} />
-                        </button>
-                    </div>
-
-                    {/* Video Content - Narrations/Script */}
-                    <div className="px-4 pb-4">
-                        {!videoClip || videoClip.narrations.length === 0 ? (
-                            <div className="text-center text-gray-500 py-4">
-                                <p className="text-xs">No script content yet.</p>
-                                <p className="text-xs mt-2">Process the video to generate narrations.</p>
-                            </div>
+                        {isGenerating ? (
+                            <>
+                                <div className="w-3 h-3 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                                <span>Generating...</span>
+                            </>
+                        ) : hasProcessedAudio ? (
+                            <>
+                                <span>✓</span>
+                                <span>Generated</span>
+                            </>
                         ) : (
-                            renderNarrations(videoClip.narrations, 'video', 1)
+                            <>
+                                <span className="text-sm">၊၊||၊</span>
+                                <span>Generate Speech</span>
+                            </>
                         )}
-                    </div>
-                </div>
+                    </button>
 
-                {/* Outro Section */}
-                <div className="rounded-xl border border-[#2a2a3e] bg-[#1e1e2e]/30 overflow-hidden transition-all duration-200 hover:border-[#3b3b50] hover:bg-[#1e1e2e]/40 hover:-translate-y-[1px]">
-                    <div className="px-4 py-3 flex items-center justify-between">
-                        <div className="flex items-center gap-3">
-                            <span className="text-gray-500 text-xs font-medium">3</span>
-                            <span className="text-white text-sm font-semibold tracking-tight">Outro</span>
-                        </div>
-                        <button className="h-8 w-8 inline-flex items-center justify-center text-gray-400 hover:text-white hover:bg-[#3b3b50] rounded-lg transition-all duration-200">
-                            <MoreHorizontal size={16} />
-                        </button>
-                    </div>
-                    <div className="px-4 pb-4">
-                        {renderNarrations(outroClip?.narrations || [], 'outro', 2, outro)}
-                    </div>
+                    {/* AI Rewrite Button */}
+                    <button className="h-9 inline-flex items-center justify-center gap-2 px-4 bg-white/5 hover:bg-white/10 text-white rounded-lg text-sm font-medium transition-all duration-200 border border-white/10 hover:border-white/20">
+                        <Sparkles size={14} />
+                        <span>AI Rewrite</span>
+                    </button>
+
+                    {/* Add button */}
+                    <button className="h-9 w-9 flex items-center justify-center text-gray-400 hover:text-white hover:bg-white/10 rounded-lg transition-all border border-white/10">
+                        <span className="text-lg">+</span>
+                    </button>
                 </div>
             </div>
 
-            {/* Footer Info */}
-            {clips.length > 0 && (
-                <div className="p-4 border-t border-[#2a2a3e] text-center">
-                    <p className="text-xs text-gray-500">
-                        {clips.reduce((sum, clip) => sum + clip.narrations.length, 0)} sync point
-                        {clips.reduce((sum, clip) => sum + clip.narrations.length, 0) !== 1 ? 's' : ''}
-                    </p>
-                </div>
-            )}
+            {/* Content - Script Cards */}
+            <div className="flex-1 overflow-y-auto px-3 py-3 space-y-3 scrollbar-thin scrollbar-thumb-white/10 scrollbar-track-transparent">
+                {/* Intro Card */}
+                <ScriptCard number={1} title="Intro">
+                    {renderNarrations(introClip?.narrations || [], 'intro', 0, intro)}
+                </ScriptCard>
+
+                {/* Video Card */}
+                <ScriptCard number={2} title="Video">
+                    {!videoClip || videoClip.narrations.length === 0 ? (
+                        <div className="text-center text-gray-500 py-4">
+                            <p className="text-sm">No script content yet.</p>
+                            <p className="text-xs mt-1 text-gray-600">Process the video to generate narrations.</p>
+                        </div>
+                    ) : (
+                        renderNarrations(videoClip.narrations, 'video', 1)
+                    )}
+                </ScriptCard>
+
+                {/* Outro Card */}
+                <ScriptCard number={3} title="Outro">
+                    {renderNarrations(outroClip?.narrations || [], 'outro', 2, outro)}
+                </ScriptCard>
+            </div>
         </div>
     );
 };

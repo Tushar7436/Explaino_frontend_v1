@@ -37,17 +37,17 @@ export const VideoEditToolbar: React.FC<VideoEditToolbarProps> = ({
 
     return (
         <>
-            <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
                 {/* Border Button */}
                 <button
                     onClick={(e) => {
                         e.stopPropagation();
                         if (onBorderClick) onBorderClick();
                     }}
-                    className="flex items-center gap-2 px-3 py-2 bg-[#3b3b50] hover:bg-[#4a4a5e] rounded-lg transition-all duration-200"
+                    className="flex items-center gap-1.5 px-2 py-1 bg-[#3b3b50] hover:bg-[#4a4a5e] rounded-md transition-all duration-200"
                 >
-                    <Square size={16} className="text-white" />
-                    <span className="text-white text-sm font-medium">Border</span>
+                    <Square size={12} className="text-white" />
+                    <span className="text-white text-xs font-medium">Border</span>
                 </button>
 
                 {/* Shadow Button */}
@@ -56,10 +56,10 @@ export const VideoEditToolbar: React.FC<VideoEditToolbarProps> = ({
                         e.stopPropagation();
                         if (onShadowClick) onShadowClick();
                     }}
-                    className="flex items-center gap-2 px-3 py-2 bg-[#3b3b50] hover:bg-[#4a4a5e] rounded-lg transition-all duration-200"
+                    className="flex items-center gap-1.5 px-2 py-1 bg-[#3b3b50] hover:bg-[#4a4a5e] rounded-md transition-all duration-200"
                 >
-                    <CircleDot size={16} className="text-white" />
-                    <span className="text-white text-sm font-medium">Shadow</span>
+                    <CircleDot size={12} className="text-white" />
+                    <span className="text-white text-xs font-medium">Shadow</span>
                 </button>
 
                 {/* Rounding Button */}
@@ -69,12 +69,12 @@ export const VideoEditToolbar: React.FC<VideoEditToolbarProps> = ({
                         e.stopPropagation();
                         handleRoundingClick();
                     }}
-                    className={`flex items-center gap-2 px-3 py-2 ${
+                    className={`flex items-center gap-1.5 px-2 py-1 ${
                         isRoundingDropdownOpen ? 'bg-[#4a4a5e]' : 'bg-[#3b3b50]'
-                    } hover:bg-[#4a4a5e] rounded-lg transition-all duration-200`}
+                    } hover:bg-[#4a4a5e] rounded-md transition-all duration-200`}
                 >
-                    <Circle size={16} className="text-white" />
-                    <span className="text-white text-sm font-medium">Rounding</span>
+                    <Circle size={12} className="text-white" />
+                    <span className="text-white text-xs font-medium">Rounding</span>
                 </button>
 
                 {/* Crop Button */}
@@ -83,10 +83,10 @@ export const VideoEditToolbar: React.FC<VideoEditToolbarProps> = ({
                         e.stopPropagation();
                         if (onCropClick) onCropClick();
                     }}
-                    className="flex items-center gap-2 px-3 py-2 bg-[#3b3b50] hover:bg-[#4a4a5e] rounded-lg transition-all duration-200"
+                    className="flex items-center gap-1.5 px-2 py-1 bg-[#3b3b50] hover:bg-[#4a4a5e] rounded-md transition-all duration-200"
                 >
-                    <Crop size={16} className="text-white" />
-                    <span className="text-white text-sm font-medium">Crop</span>
+                    <Crop size={12} className="text-white" />
+                    <span className="text-white text-xs font-medium">Crop</span>
                 </button>
             </div>
 

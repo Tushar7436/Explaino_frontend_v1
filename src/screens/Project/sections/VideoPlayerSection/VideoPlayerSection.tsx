@@ -205,7 +205,7 @@ export const VideoLayer: React.FC<VideoLayerProps> = ({
 
 interface VideoControlsProps {
     audioUrl: string | null;
-    processedAudioUrl: string | null;
+    processedAudioUrl?: string | null; // Optional for backward compatibility
     isPlaying: boolean;
     currentTime: number;
     duration: number;
@@ -284,47 +284,47 @@ export const VideoControls: React.FC<VideoControlsProps> = ({
             <audio ref={aiAudioRef} preload="auto" style={{ display: 'none' }} />
 
             {/* Simple Playback Controls - Clueso Style */}
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2">
                 {/* Previous/Skip Back */}
                 <button
                     onClick={skipBack}
                     disabled={disabled}
-                    className={`w-9 h-9 flex items-center justify-center text-white rounded-full transition-all duration-200 ${disabled
+                    className={`w-6 h-6 flex items-center justify-center text-white rounded-full transition-all duration-200 ${disabled
                         ? 'bg-[#2a2a3e]/50 cursor-not-allowed opacity-50'
                         : 'bg-[#2a2a3e] hover:bg-[#3b3b50] hover:text-gray-300'
                         }`}
                     title="Skip back 10s"
                 >
-                    <SkipBack size={16} />
+                    <SkipBack size={12} />
                 </button>
 
                 {/* Play/Pause - Pink/Magenta like Clueso */}
                 <button
                     onClick={onPlayPause}
                     disabled={disabled}
-                    className={`w-10 h-10 flex items-center justify-center text-white rounded-full transition-all duration-200 shadow-lg ${disabled
+                    className={`w-7 h-7 flex items-center justify-center text-white rounded-full transition-all duration-200 shadow-lg ${disabled
                         ? 'bg-[#ec4899]/50 cursor-not-allowed opacity-50'
                         : 'bg-[#ec4899] hover:bg-[#db2777]'
                         }`}
                 >
-                    {isPlaying ? <Pause size={18} fill="white" /> : <Play size={18} fill="white" className="ml-0.5" />}
+                    {isPlaying ? <Pause size={14} fill="white" /> : <Play size={14} fill="white" className="ml-0.5" />}
                 </button>
 
                 {/* Next/Skip Forward */}
                 <button
                     onClick={skipForward}
                     disabled={disabled}
-                    className={`w-9 h-9 flex items-center justify-center text-white rounded-full transition-all duration-200 ${disabled
+                    className={`w-6 h-6 flex items-center justify-center text-white rounded-full transition-all duration-200 ${disabled
                         ? 'bg-[#2a2a3e]/50 cursor-not-allowed opacity-50'
                         : 'bg-[#2a2a3e] hover:bg-[#3b3b50] hover:text-gray-300'
                         }`}
                     title="Skip forward 10s"
                 >
-                    <SkipForward size={16} />
+                    <SkipForward size={12} />
                 </button>
 
                 {/* Time Display - Clueso Format */}
-                <div className={`text-sm font-medium ml-2 ${disabled ? 'text-gray-500' : 'text-white'}`}>
+                <div className={`text-xs font-medium ml-1.5 ${disabled ? 'text-gray-500' : 'text-white'}`}>
                     {formatTime(currentTime)} <span className="text-gray-500">/</span> {formatTime(duration)}
                 </div>
             </div>
@@ -336,7 +336,7 @@ export const VideoControls: React.FC<VideoControlsProps> = ({
 interface VideoPlayerSectionProps {
     videoUrl: string | null;
     audioUrl: string | null;
-    processedAudioUrl: string | null;
+    processedAudioUrl?: string | null; // Optional for backward compatibility
     isPlaying: boolean;
     currentTime: number;
     duration: number;

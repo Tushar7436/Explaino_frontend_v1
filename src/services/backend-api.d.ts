@@ -96,7 +96,7 @@ export interface ZoomInstruction {
 
 export interface ExportOptions {
     backgroundColor?: string;
-    aspectRatio?: '16:9' | '9:16' | '1:1' | '4:3';
+    aspectRatio?: '16:9' | '9:16' | '1:1' | '4:3' | '3:4' | '4:5' | '5:4' | '1920:1080';
 }
 
 export function processRecording(payload: any): Promise<any>;
@@ -115,4 +115,9 @@ export function getNarrations(id: string): Promise<Narration[]>;
 export function getInstructions(id: string): Promise<Instruction[]>;
 export function getDisplayEffects(id: string): Promise<DisplayEffect[]>;
 export function getWebSocketUrl(sessionId: string): string;
+export function updateInstructions(
+    sessionId: string,
+    instructions: any,
+    changeStack?: any[]
+): Promise<{ message: string; savedAt: string; sessionId: string; changeSummary?: string }>;
 export function checkHealth(): Promise<{ status: string }>;

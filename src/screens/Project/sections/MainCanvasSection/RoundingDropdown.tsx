@@ -38,16 +38,16 @@ export const RoundingDropdown: React.FC<RoundingDropdownProps> = ({
 
             {/* Dropdown Panel */}
             <div
-                className="bg-[#2a2a3e] rounded-lg shadow-2xl border border-[#3a3a4e] p-4 min-w-[280px] z-[1000]"
+                className="bg-[#2a2a3e] rounded-md shadow-2xl border border-[#3a3a4e] p-3 min-w-[220px] z-[1000]"
                 style={dropdownStyle}
                 onClick={(e) => e.stopPropagation()}
             >
                 {/* Header */}
-                <div className="flex items-center justify-between mb-4">
-                    <div className="flex items-center gap-2">
-                        <span className="text-white text-sm font-medium">Rounding</span>
+                <div className="flex items-center justify-between mb-3">
+                    <div className="flex items-center gap-1.5">
+                        <span className="text-white text-xs font-medium">Rounding</span>
                     </div>
-                    <span className="text-white text-sm font-semibold">{currentValue} %</span>
+                    <span className="text-white text-xs font-semibold">{currentValue} %</span>
                 </div>
 
                 {/* Slider */}
@@ -59,7 +59,7 @@ export const RoundingDropdown: React.FC<RoundingDropdownProps> = ({
                         step="1"
                         value={currentValue}
                         onChange={(e) => onValueChange(Number(e.target.value))}
-                        className="w-full h-2 bg-[#1a1a2e] rounded-lg appearance-none cursor-pointer slider-thumb"
+                        className="w-full h-1.5 bg-[#1a1a2e] rounded-lg appearance-none cursor-pointer slider-thumb"
                         style={{
                             background: `linear-gradient(to right, #FF1CF7 0%, #FF1CF7 ${(currentValue / 20) * 100}%, #1a1a2e ${(currentValue / 20) * 100}%, #1a1a2e 100%)`,
                         }}
@@ -70,8 +70,8 @@ export const RoundingDropdown: React.FC<RoundingDropdownProps> = ({
                 <style>{`
                     .slider-thumb::-webkit-slider-thumb {
                         appearance: none;
-                        width: 16px;
-                        height: 16px;
+                        width: 12px;
+                        height: 12px;
                         border-radius: 50%;
                         background: #FF1CF7;
                         cursor: pointer;
@@ -80,8 +80,8 @@ export const RoundingDropdown: React.FC<RoundingDropdownProps> = ({
                     }
 
                     .slider-thumb::-moz-range-thumb {
-                        width: 16px;
-                        height: 16px;
+                        width: 12px;
+                        height: 12px;
                         border-radius: 50%;
                         background: #FF1CF7;
                         cursor: pointer;

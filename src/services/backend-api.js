@@ -277,6 +277,48 @@ export function getWebSocketUrl(sessionId) {
 }
 
 /**
+ * Update instructions.json for a session (manual save)
+ * @param {string} sessionId - Session ID
+ * @param {Object} instructions - Full instructions object to save
+ * @param {Array} changeStack - Optional array of changes for logging
+ * @returns {Promise<Object>} Save response with timestamp
+ */
+export async function updateInstructions(sessionId, instructions, changeStack = []) {
+    const payload = {
+        instructions,
+        changeSummary: changeStack.length > 0 
+            ? `${changeStack.length} changes: ${changeStack.map(c => c.type).join(', ')}`
+            : undefined
+    };
+
+    console.log('[updateInstructions] Sending to backend:', {
+        sessionId,
+        url: `${API_BASE_URL}/api/session/${sessionId}/instructions`,
+        instructionsKeys: Object.keys(instructions || {}),
+        changeSummary: payload.changeSummary,
+        payloadSize: JSON.stringify(payload).length
+    });
+
+    const response = await fetch(`${API_BASE_URL}/api/session/${sessionId}/instructions`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(payload)
+    });
+
+    if (!response.ok) {
+        const error = await response.json().catch(() => ({ message: 'Unknown error' }));
+        console.error('[updateInstructions] Error response:', error);
+        throw new Error(error.message || `HTTP ${response.status}: Failed to save changes`);
+    }
+
+    const result = await response.json();
+    console.log('[updateInstructions] Success response:', result);
+    return result;
+}
+
+/**
  * Check backend health
  * @returns {Promise<Object>} Health status
  */
