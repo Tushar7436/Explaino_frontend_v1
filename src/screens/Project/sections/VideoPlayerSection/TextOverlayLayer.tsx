@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useRef, useEffect, useState } from 'react';
 
 interface TextPosition {
     x: number;
@@ -67,6 +67,29 @@ export const TextOverlayLayer: React.FC<TextOverlayLayerProps> = ({
     recordingWidth,
     recordingHeight
 }) => {
+    const containerRef = useRef<HTMLDivElement>(null);
+    const [containerHeight, setContainerHeight] = useState(1080);
+    
+    // Track container height changes for dynamic font scaling
+    useEffect(() => {
+        if (!containerRef.current) return;
+        
+        const updateHeight = () => {
+            if (containerRef.current) {
+                setContainerHeight(containerRef.current.clientHeight);
+            }
+        };
+        
+        // Initial measurement
+        updateHeight();
+        
+        // Update on resize
+        const resizeObserver = new ResizeObserver(updateHeight);
+        resizeObserver.observe(containerRef.current);
+        
+        return () => resizeObserver.disconnect();
+    }, []);
+    
     // Filter active text elements based on current time
     // Use <= for end to include elements that start exactly at their end time
     const activeElements = textElements.filter(
@@ -85,6 +108,7 @@ export const TextOverlayLayer: React.FC<TextOverlayLayerProps> = ({
 
     return (
         <div
+            ref={containerRef}
             style={{
                 position: 'absolute',
                 top: 0,
@@ -104,9 +128,9 @@ export const TextOverlayLayer: React.FC<TextOverlayLayerProps> = ({
                 const widthPercent = toPercentage(dimension.width, recordingWidth);
                 const heightPercent = toPercentage(dimension.height, recordingHeight);
                 
-                // Calculate font size as percentage of container height for proper scaling
-                // 126px on 1080px = 11.67% of container height
-                const fontSizePercent = (style.fontSize / recordingHeight) * 100;
+                // Calculate font size based on actual container height (not viewport)
+                // This ensures text scales with the video player container size
+                const fontSizePx = (style.fontSize / recordingHeight) * containerHeight;
                 
                 // Build CSS styles with fallback fonts
                 const textStyle: React.CSSProperties = {
@@ -116,7 +140,7 @@ export const TextOverlayLayer: React.FC<TextOverlayLayerProps> = ({
                     width: `${widthPercent}%`,
                     height: `${heightPercent}%`,
                     fontFamily: `"${style.fontFamily}", "Inter", -apple-system, BlinkMacSystemFont, sans-serif`,
-                    fontSize: `${fontSizePercent}%`,
+                    fontSize: `${fontSizePx}px`,
                     fontWeight: style.fontWeight,
                     color: style.color,
                     textAlign: 'center',
@@ -139,16 +163,21 @@ export const TextOverlayLayer: React.FC<TextOverlayLayerProps> = ({
                     textStyle.textShadow = `${shadow.position.x}px ${shadow.position.y}px 0px ${shadow.color}`;
                 }
                 
-                // Add background if present
-                if (style.background) {
-                    textStyle.backgroundColor = style.background.color;
-                    textStyle.borderRadius = `${style.background.borderRadius}px`;
-                    textStyle.padding = '0.5em 1.5em';
-                }
+                // Container style for background - wraps content instead of full width
+                const containerStyle: React.CSSProperties = style.background ? {
+                    display: 'inline-block',
+                    backgroundColor: style.background.color,
+                    borderRadius: `${style.background.borderRadius}px`,
+                    padding: '0.2em 0.8em',
+                } : {};
                 
                 return (
                     <div key={index} style={textStyle}>
-                        {element.content}
+                        {style.background ? (
+                            <span style={containerStyle}>{element.content}</span>
+                        ) : (
+                            element.content
+                        )}
                     </div>
                 );
             })}

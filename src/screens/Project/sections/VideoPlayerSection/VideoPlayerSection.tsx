@@ -1,6 +1,19 @@
-import React, { useRef } from 'react';
+import React, { useRef, useState, useEffect } from 'react';
 import { Play, Pause, SkipBack, SkipForward } from 'lucide-react';
 import { TextOverlayLayer } from './TextOverlayLayer';
+import { VideoSelectionBorder } from '../MainCanvasSection/VideoSelectionBorder';
+
+// Helper to get video MIME type from URL
+function getVideoMimeType(url: string | null): string {
+    if (!url) return 'video/webm';
+    
+    if (url.endsWith('.mp4')) return 'video/mp4';
+    if (url.endsWith('.mov')) return 'video/quicktime';
+    if (url.endsWith('.webm')) return 'video/webm';
+    if (url.endsWith('.avi')) return 'video/x-msvideo';
+    
+    return 'video/webm'; // default
+}
 
 interface TextElement {
     type: string;
@@ -21,6 +34,10 @@ interface VideoLayerProps {
     currentTime?: number;
     recordingWidth?: number;
     recordingHeight?: number;
+    onVideoClick?: () => void;
+    hasMedia?: boolean;
+    borderRadius?: number; // Border radius value (0-20%)
+    isVideoSelected?: boolean; // Whether video is selected
 }
 
 /**
@@ -35,13 +52,96 @@ export const VideoLayer: React.FC<VideoLayerProps> = ({
     textElements = [],
     currentTime = 0,
     recordingWidth = 1920,
-    recordingHeight = 1080
+    recordingHeight = 1080,
+    onVideoClick,
+    hasMedia = true,
+    borderRadius = 3, // Default to 3% for subtle rounding
+    isVideoSelected = false
 }) => {
-    console.log('[VideoLayer] Text elements:', textElements.length, 'Current time:', currentTime);
+    console.log('[VideoLayer] borderRadius:', borderRadius, 'isVideoSelected:', isVideoSelected);
     
+    // Track actual rendered video dimensions for selection border
+    const [videoDimensions, setVideoDimensions] = useState<{width: number, height: number} | null>(null);
+    
+    // Calculate actual video dimensions when video loads or window resizes
+    useEffect(() => {
+        const updateVideoDimensions = () => {
+            if (videoRef.current && videoLayerRef.current) {
+                const video = videoRef.current;
+                const container = videoLayerRef.current;
+                
+                // Get video's natural aspect ratio
+                const videoAspect = video.videoWidth / video.videoHeight;
+                const containerWidth = container.clientWidth;
+                const containerHeight = container.clientHeight;
+                const containerAspect = containerWidth / containerHeight;
+                
+                let renderedWidth, renderedHeight;
+                
+                // Calculate actual rendered size (object-contain logic)
+                if (videoAspect > containerAspect) {
+                    // Video is wider - limited by width
+                    renderedWidth = containerWidth;
+                    renderedHeight = containerWidth / videoAspect;
+                } else {
+                    // Video is taller - limited by height
+                    renderedHeight = containerHeight;
+                    renderedWidth = containerHeight * videoAspect;
+                }
+                
+                setVideoDimensions({ width: renderedWidth, height: renderedHeight });
+            }
+        };
+        
+        // Update on video load
+        const video = videoRef.current;
+        const container = videoLayerRef.current;
+        
+        if (video) {
+            video.addEventListener('loadedmetadata', updateVideoDimensions);
+            // Also update immediately if video is already loaded
+            if (video.videoWidth && video.videoHeight) {
+                updateVideoDimensions();
+            }
+        }
+        
+        // Update on window resize
+        window.addEventListener('resize', updateVideoDimensions);
+        
+        // Use ResizeObserver to detect container size changes (e.g., timeline height changes)
+        let resizeObserver: ResizeObserver | null = null;
+        if (container) {
+            resizeObserver = new ResizeObserver(() => {
+                updateVideoDimensions();
+            });
+            resizeObserver.observe(container);
+        }
+        
+        return () => {
+            if (video) {
+                video.removeEventListener('loadedmetadata', updateVideoDimensions);
+            }
+            window.removeEventListener('resize', updateVideoDimensions);
+            if (resizeObserver && container) {
+                resizeObserver.unobserve(container);
+                resizeObserver.disconnect();
+            }
+        };
+    }, [videoRef, videoLayerRef]);
+    
+    const handleVideoClick = (e: React.MouseEvent) => {
+        if (!hasMedia) return; // Don't handle click if no media
+        
+        e.stopPropagation(); // Prevent event from bubbling to document
+        if (onVideoClick) {
+            onVideoClick();
+        }
+    };
+
     return (
         <div
             ref={videoLayerRef}
+            onClick={handleVideoClick}
             style={{
                 width: '100%',
                 height: '100%',
@@ -49,6 +149,7 @@ export const VideoLayer: React.FC<VideoLayerProps> = ({
                 alignItems: 'center',
                 justifyContent: 'center',
                 position: 'relative',
+                cursor: hasMedia ? 'pointer' : 'default',
                 // CRITICAL: Camera-zoom requires transform-origin at center
                 transformOrigin: 'center center',
                 // GPU acceleration hints
@@ -57,20 +158,25 @@ export const VideoLayer: React.FC<VideoLayerProps> = ({
                 // Transition is now managed dynamically in the rendering loop
                 // This will be overridden by the zoom transform when effects are active
                 transform: 'scale3d(1, 1, 1)',
-                // NEW: Control visibility for timeline clips (intro/outro)
-                opacity: isVideoVisible ? 1 : 0,
-                transition: 'opacity 0.3s ease',
             }}
         >
             {videoUrl ? (
                 <video
                     ref={videoRef}
                     className="max-w-full max-h-full object-contain"
+                    style={{
+                        // Control video visibility for timeline clips (intro/outro)
+                        opacity: isVideoVisible ? 1 : 0,
+                        transition: 'opacity 0.3s ease',
+                        // Apply border radius to video element itself
+                        borderRadius: `${borderRadius}%`,
+                        overflow: 'hidden',
+                    }}
                     playsInline
                     preload="auto"
                     muted
                 >
-                    <source src={videoUrl} type="video/webm" />
+                    <source src={videoUrl} type={getVideoMimeType(videoUrl)} />
                 </video>
             ) : (
                 <div className="w-full h-full flex items-center justify-center bg-black/50 rounded-lg">
@@ -80,12 +186,18 @@ export const VideoLayer: React.FC<VideoLayerProps> = ({
                     </div>
                 </div>
             )}
-            {/* Text Overlay Layer - Always rendered */}
+            {/* Text Overlay Layer - Always visible, independent of video visibility */}
             <TextOverlayLayer
                 textElements={textElements}
                 currentTime={currentTime}
                 recordingWidth={recordingWidth}
                 recordingHeight={recordingHeight}
+            />
+            
+            {/* Video Selection Border - Shows when video is selected (always sharp corners) */}
+            <VideoSelectionBorder 
+                isSelected={isVideoSelected} 
+                videoDimensions={videoDimensions}
             />
         </div>
     );

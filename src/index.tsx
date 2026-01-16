@@ -15,6 +15,8 @@ initAuthManager();
 // Wrapper component to pass sessionId from URL params
 function RecordingPageWrapper() {
   const { sessionId } = useParams();
+  console.log('[RecordingPageWrapper] Extracted sessionId from URL:', sessionId);
+  console.log('[RecordingPageWrapper] Current URL:', window.location.href);
   return <ProjectScreen sessionId={sessionId} />;
 }
 

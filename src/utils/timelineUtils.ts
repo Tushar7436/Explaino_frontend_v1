@@ -8,11 +8,21 @@
  * The intro and outro are NEW clips (background only), not part of raw video
  */
 
+export interface MediaItem {
+    type: 'video' | 'image' | 'audio';
+    format: string; // 'webm' | 'mp4' | 'mov' | 'jpg' | 'png' etc.
+    url: string;
+    borderRadius?: number;
+}
+
 export interface TimelineClip {
     name: string;
     start: number;
     end: number;
     backgroundColor?: string;
+    media: MediaItem[];
+    
+    // DEPRECATED: Keep for backward compatibility
     borderRadius?: number;
     url?: string | null;
 }
@@ -39,7 +49,47 @@ export function getActiveClip(timeline: Timeline | undefined, timelineTime: numb
  */
 export function isVideoVisible(timeline: Timeline | undefined, timelineTime: number): boolean {
     const activeClip = getActiveClip(timeline, timelineTime);
-    return activeClip?.name === 'video' && activeClip.url !== null;
+    if (!activeClip) return false;
+    
+    // Check new media structure
+    if (activeClip.media && activeClip.media.length > 0) {
+        return activeClip.media.some(m => m.type === 'video');
+    }
+    
+    // Fallback to old structure for backward compatibility
+    return activeClip.url !== null && activeClip.url !== undefined;
+}
+
+/**
+ * Get video URL from clip (supports both old and new structure)
+ */
+export function getClipVideoUrl(clip: TimelineClip | null): string | null {
+    if (!clip) return null;
+    
+    // New structure: check media array
+    if (clip.media && clip.media.length > 0) {
+        const videoMedia = clip.media.find(m => m.type === 'video');
+        return videoMedia?.url || null;
+    }
+    
+    // Fallback to old structure
+    return clip.url || null;
+}
+
+/**
+ * Get border radius from clip (supports both old and new structure)
+ */
+export function getClipBorderRadius(clip: TimelineClip | null): number {
+    if (!clip) return 0;
+    
+    // New structure: check first video media item
+    if (clip.media && clip.media.length > 0) {
+        const videoMedia = clip.media.find(m => m.type === 'video');
+        return videoMedia?.borderRadius || 0;
+    }
+    
+    // Fallback to old structure
+    return clip.borderRadius || 0;
 }
 
 /**

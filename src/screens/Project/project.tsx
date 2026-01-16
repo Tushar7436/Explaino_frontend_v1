@@ -47,6 +47,10 @@ interface RecordingDimensions {
 }
 
 export const ProjectScreen: React.FC<ProjectScreenProps> = ({ sessionId }) => {
+    // ============== COMPONENT MOUNT DEBUG ==============
+    console.log('[ProjectScreen] Component mounting/rendering with sessionId:', sessionId);
+    console.log('[ProjectScreen] Window location:', window.location.href);
+    
     // ============== CDN CONFIGURATION ==============
     const CDN_BASE = 'https://cdn.vocallabs.ai';
     const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:8000';
@@ -98,6 +102,7 @@ export const ProjectScreen: React.FC<ProjectScreenProps> = ({ sessionId }) => {
         setHasSpeechGenerated(false);
         setClipAudioUrls({ intro: null, video: null, outro: null });
         setCurrentClipAudio(null);
+        setIsVideoSelected(false); // Reset selection on new session
     }, [sessionId]);
 
     // ============== PROCESSING STATE ==============
@@ -115,8 +120,78 @@ export const ProjectScreen: React.FC<ProjectScreenProps> = ({ sessionId }) => {
     // ============== TIMELINE STATE ==============
     const [activeClip, setActiveClip] = useState<TimelineClip | null>(null);
     
+    // ============== VIDEO SELECTION STATE ==============
+    const [isVideoSelected, setIsVideoSelected] = useState(false);
+    
+    // Check if current active clip has media (video/image)
+    const currentClipHasMedia = activeClip?.media && activeClip.media.length > 0;
+    
     // Compute video visibility based on current clip
     const videoVisible = results?.timeline ? isVideoVisible(results.timeline, currentTime) : true;
+
+    // ============== BORDER RADIUS HANDLER ==============
+    const handleBorderRadiusChange = (value: number) => {
+        console.log('[handleBorderRadiusChange] Called with value:', value);
+        if (!activeClip || !activeClip.media || activeClip.media.length === 0) {
+            console.log('[handleBorderRadiusChange] No active clip or media, returning');
+            return;
+        }
+        
+        console.log('[handleBorderRadiusChange] Current activeClip.media[0].borderRadius:', activeClip.media[0]?.borderRadius);
+        
+        // Update the active clip's media borderRadius
+        const updatedClip = {
+            ...activeClip,
+            media: activeClip.media.map((mediaItem: any, index: number) => 
+                index === 0 ? { ...mediaItem, borderRadius: value } : mediaItem
+            )
+        };
+        
+        console.log('[handleBorderRadiusChange] Updated clip borderRadius:', updatedClip.media[0].borderRadius);
+        
+        setActiveClip(updatedClip);
+        
+        // Update in results timeline as well
+        if (results?.timeline?.clips) {
+            const updatedClips = results.timeline.clips.map((clip: any) => 
+                clip.name === activeClip.name ? updatedClip : clip
+            );
+            
+            setResults({
+                ...results,
+                timeline: {
+                    ...results.timeline,
+                    clips: updatedClips
+                }
+            });
+        }
+    };
+
+    // ============== GLOBAL CLICK LISTENER FOR VIDEO DESELECTION ==============
+    // Deselect video when clicking outside video area (on background or other UI elements)
+    useEffect(() => {
+        const handleDocumentClick = () => {
+            // Only deselect if video is currently selected
+            if (isVideoSelected) {
+                setIsVideoSelected(false);
+            }
+        };
+
+        // Add listener to document
+        document.addEventListener('click', handleDocumentClick);
+
+        // Cleanup
+        return () => {
+            document.removeEventListener('click', handleDocumentClick);
+        };
+    }, [isVideoSelected]);
+
+    // Deselect video when active clip changes or clip has no media
+    useEffect(() => {
+        if (!currentClipHasMedia) {
+            setIsVideoSelected(false);
+        }
+    }, [activeClip?.name, currentClipHasMedia]);
     
     // Update current clip audio when active clip changes
     useEffect(() => {
@@ -172,9 +247,9 @@ export const ProjectScreen: React.FC<ProjectScreenProps> = ({ sessionId }) => {
         }
     }, [activeClip, clipAudioUrls, currentClipAudio, isPlaying, currentTime, results]);
     
-    // Compute background color based on active clip (for intro/outro) or user selection
-    const currentBackgroundColor = (activeClip && (activeClip.name === 'intro' || activeClip.name === 'outro'))
-        ? (activeClip.backgroundColor || backgroundColor)
+    // Compute background color based on active clip - use clip's backgroundColor if available
+    const currentBackgroundColor = (activeClip && activeClip.backgroundColor)
+        ? activeClip.backgroundColor
         : backgroundColor;
 
     // ============== REFS ==============
@@ -242,54 +317,135 @@ export const ProjectScreen: React.FC<ProjectScreenProps> = ({ sessionId }) => {
 
     // Auto-start processing when sessionId is available
     useEffect(() => {
+        console.log('[Session] useEffect triggered, sessionId:', sessionId);
+        
         if (!sessionId) {
+            console.log('[Session] No sessionId, skipping processing');
             setPreparing(false);
             return;
         }
 
-        const startProcessing = async () => {
-            try {
-                setPreparing(true);
-                const response = await processSession(sessionId);
-
-                // Get video and audio URLs from backend response and convert to CDN URLs
-                const videoUrlFromBackend = response.videoUrl;
-                const audioUrlFromBackend = response.audioUrl;
-
-                // Use CDN URLs - backend should provide S3 paths
-                const finalVideoUrl = formatCdnUrl(videoUrlFromBackend) || formatCdnUrl(`recordings/${sessionId}/video.webm`);
-                const finalAudioUrl = formatCdnUrl(audioUrlFromBackend) || formatCdnUrl(`recordings/${sessionId}/rawaudio/audio.webm`);
-
-                console.log('[Session] Setting CDN URLs:', { finalVideoUrl, finalAudioUrl });
-
-                setVideoUrl(finalVideoUrl);
-                setAudioUrl(finalAudioUrl);
-
-                if (response.videoDuration && response.videoDuration > 0) {
-                    setDuration(response.videoDuration);
-                }
-
-                setResults(response);
+        let isCancelled = false;
+        let retryCount = 0;
+        const maxRetries = 30; // 30 retries = ~60 seconds with exponential backoff
+        
+        const loadInstructionsFromCDN = async () => {
+            const instructionsUrl = `${CDN_BASE}/recordings/${sessionId}/session/instructions.json`;
+            
+            const attemptFetch = async (): Promise<boolean> => {
+                if (isCancelled) return false;
                 
-                // Initialize active clip to intro at time 0 if timeline exists
-                if ((response as any).timeline) {
-                    const initialClip = getActiveClip((response as any).timeline, 0);
-                    if (initialClip) {
-                        console.log('[Timeline] Setting initial clip:', initialClip.name);
-                        setActiveClip(initialClip);
-                        setCurrentTime(0);
+                try {
+                    console.log(`[Session] Attempt ${retryCount + 1}/${maxRetries}: Fetching instructions.json from CDN`);
+                    
+                    const response = await fetch(instructionsUrl, {
+                        cache: 'no-store' // Prevent caching to always get fresh data
+                    });
+                    
+                    if (response.ok) {
+                        const sessionData = await response.json();
+                        
+                        if (isCancelled) return false;
+                        
+                        console.log('[Session] Successfully loaded instructions.json:', sessionData);
+
+                        // Get video URL from timeline structure (new media format)
+                        let finalVideoUrl: string | null = null;
+                        if (sessionData.timeline?.clips) {
+                            const videoClip = sessionData.timeline.clips.find((c: any) => c.name === 'video');
+                            if (videoClip) {
+                                // Check new media structure
+                                if (videoClip.media && videoClip.media.length > 0) {
+                                    const videoMedia = videoClip.media.find((m: any) => m.type === 'video');
+                                    finalVideoUrl = videoMedia?.url || null;
+                                    console.log('[Session] Extracted video URL from media array:', finalVideoUrl);
+                                } else if (videoClip.url) {
+                                    // Fallback to old structure
+                                    finalVideoUrl = videoClip.url;
+                                    console.log('[Session] Using legacy clip.url:', finalVideoUrl);
+                                }
+                            }
+                        }
+
+                        // Fallback to hardcoded path if not in timeline
+                        if (!finalVideoUrl) {
+                            finalVideoUrl = formatCdnUrl(`recordings/${sessionId}/rawvideo/video.webm`);
+                            console.log('[Session] Using fallback CDN URL:', finalVideoUrl);
+                        }
+
+                        const finalAudioUrl = formatCdnUrl(`recordings/${sessionId}/rawaudio/audio.webm`);
+
+                        console.log('[Session] Setting URLs:', { finalVideoUrl, finalAudioUrl });
+
+                        setVideoUrl(finalVideoUrl);
+                        setAudioUrl(finalAudioUrl);
+
+                        if (sessionData.videoDuration && sessionData.videoDuration > 0) {
+                            setDuration(sessionData.videoDuration);
+                        }
+
+                        console.log('[Session] Setting results from instructions.json...');
+                        setResults(sessionData);
+                        console.log('[Session] Results set successfully');
+                        
+                        // Initialize active clip to intro at time 0 if timeline exists
+                        if (sessionData.timeline) {
+                            const initialClip = getActiveClip(sessionData.timeline, 0);
+                            if (initialClip) {
+                                console.log('[Timeline] Setting initial clip:', initialClip.name);
+                                setActiveClip(initialClip);
+                                setCurrentTime(0);
+                            }
+                        }
+                        
+                        setPreparing(false);
+                        console.log('[Session] Loading complete from instructions.json');
+                        return true; // Success
                     }
+                    
+                    // File not ready yet (404, 403, etc.)
+                    console.log(`[Session] Instructions.json not ready yet (status: ${response.status}), will retry...`);
+                    return false;
+                } catch (err: any) {
+                    console.warn(`[Session] Fetch attempt ${retryCount + 1} failed:`, err.message);
+                    return false;
+                }
+            };
+            
+            // Retry loop with exponential backoff
+            setPreparing(true);
+            
+            while (retryCount < maxRetries && !isCancelled) {
+                const success = await attemptFetch();
+                
+                if (success) {
+                    return; // Successfully loaded
                 }
                 
-                setPreparing(false);
-            } catch (err: any) {
-                console.error('[Session] Processing error:', err);
-                setError(err.message);
+                retryCount++;
+                
+                if (retryCount < maxRetries) {
+                    // Exponential backoff: 1s, 2s, 4s, then stay at 4s
+                    const delay = Math.min(1000 * Math.pow(2, retryCount - 1), 4000);
+                    console.log(`[Session] Waiting ${delay}ms before retry ${retryCount + 1}...`);
+                    await new Promise(resolve => setTimeout(resolve, delay));
+                }
+            }
+            
+            // Max retries reached
+            if (!isCancelled) {
+                console.error('[Session] Max retries reached, instructions.json still not available');
+                setError('Session processing is taking longer than expected. Please refresh the page to try again.');
                 setPreparing(false);
             }
         };
 
-        startProcessing();
+        loadInstructionsFromCDN();
+        
+        // Cleanup function to cancel polling if component unmounts
+        return () => {
+            isCancelled = true;
+        };
     }, [sessionId]);
 
     // Synchronize video with audio - Use RAF for smooth timeline updates
@@ -450,9 +606,12 @@ export const ProjectScreen: React.FC<ProjectScreenProps> = ({ sessionId }) => {
 
     // Parse and normalize effects when results are available
     useEffect(() => {
-        if (!recordingDimensions) return;
+        if (!results) {
+            console.log('[Effects] No results yet, skipping effect extraction');
+            return;
+        }
 
-        // Extract effects from displayElements or fall back to legacy displayEffects
+        // Extract effects and text elements FIRST (don't depend on recordingDimensions for extraction)
         let effectsArray: any[] = [];
         let textElementsArray: any[] = [];
         
@@ -470,10 +629,19 @@ export const ProjectScreen: React.FC<ProjectScreenProps> = ({ sessionId }) => {
             console.log('[Effects] Using legacy displayEffects:', effectsArray.length, 'effects');
         }
         
-        // Store text elements in state
+        // Store text elements in state ALWAYS (don't wait for recordingDimensions)
         setTextElements(textElementsArray);
 
-        if (effectsArray.length === 0) return;
+        // Only normalize effects if we have recordingDimensions
+        if (!recordingDimensions) {
+            console.log('[Effects] No recording dimensions yet, text elements stored but effects not normalized');
+            return;
+        }
+
+        if (effectsArray.length === 0) {
+            console.log('[Effects] No effects to normalize');
+            return;
+        }
 
         const filtered = effectsArray
             .filter((effect: any) => effect.target?.bounds && effect.style?.zoom?.enabled);
@@ -959,25 +1127,26 @@ export const ProjectScreen: React.FC<ProjectScreenProps> = ({ sessionId }) => {
                 setHasSpeechGenerated(true);
                 
                 console.log('[Audio] Updated clip audio URLs after speech generation (CDN):', urls);
-                
-                // CRITICAL: Reset timeline to start (intro clip) to play from beginning
-                setCurrentTime(0);
-                const introClipData = results?.timeline?.clips?.find((c: any) => c.name === 'intro');
+            }
+
+            // CRITICAL: Reset timeline to start (intro clip at time 0) to play from beginning
+            // Don't reset video.currentTime because intro clip doesn't use raw video
+            // Video will be positioned correctly when transitioning to video clip
+            setCurrentTime(0);
+            
+            // Use the timeline from results to get the intro clip
+            if (results?.timeline) {
+                const introClipData = getActiveClip(results.timeline, 0);
                 if (introClipData) {
                     setActiveClip(introClipData);
                     console.log('[Audio] Reset to intro clip at timeline 0 after speech generation');
                 }
             }
-
-            // Reset to beginning but don't auto-play - user can play manually
-            if (video) {
-                video.currentTime = 0;
-            }
+            
+            // Reset AI audio position
             if (aiAudioRef.current) {
                 aiAudioRef.current.currentTime = 0;
             }
-            setCurrentTime(0);
-            setActiveClip(getActiveClip(results?.timeline, 0));
         } catch (err: any) {
             console.error('Speech generation error:', err);
             setError('Speech generation failed: ' + err.message);
@@ -1115,6 +1284,8 @@ export const ProjectScreen: React.FC<ProjectScreenProps> = ({ sessionId }) => {
                         isGenerating={generatingSpeech}
                         hasProcessedAudio={hasSpeechGenerated}
                         currentTime={currentTime}
+                        intro={results?.intro || undefined}
+                        outro={results?.outro || undefined}
                     />
                 )}
 
@@ -1135,12 +1306,42 @@ export const ProjectScreen: React.FC<ProjectScreenProps> = ({ sessionId }) => {
                     aspectRatio={aspectRatio}
                     backgroundColor={currentBackgroundColor}
                     onAspectRatioChange={setAspectRatio}
-                    onBackgroundColorChange={setBackgroundColor}
+                    onBackgroundColorChange={(color: string) => {
+                        // Update the background color of the current active clip
+                        if (activeClip && results?.timeline?.clips) {
+                            const updatedClips = results.timeline.clips.map((clip: any) => {
+                                if (clip.name === activeClip.name) {
+                                    return { ...clip, backgroundColor: color };
+                                }
+                                return clip;
+                            });
+                            
+                            const updatedResults = {
+                                ...results,
+                                timeline: {
+                                    ...results.timeline,
+                                    clips: updatedClips
+                                }
+                            };
+                            
+                            setResults(updatedResults);
+                            
+                            // Update the active clip with the new backgroundColor immediately
+                            setActiveClip({
+                                ...activeClip,
+                                backgroundColor: color
+                            });
+                        } else {
+                            // Fallback to global ba && currentClipHasMediackground color if no active clip
+                            setBackgroundColor(color);
+                        }
+                    }}
                     videoWidth={recordingDimensions?.recordingWidth}
                     videoHeight={recordingDimensions?.recordingHeight}
                     isGeneratingSpeech={generatingSpeech}
-                    timeline={results?.timeline}
-                    displayEffects={results?.displayEffects}
+                    isVideoSelected={isVideoSelected}
+                    timeline={results?.timeline?.clips || []}
+                    displayElements={results?.displayElements || results?.displayEffects}
                     narrations={narrations}
                     intro={results?.intro}
                     outro={results?.outro}
@@ -1148,6 +1349,8 @@ export const ProjectScreen: React.FC<ProjectScreenProps> = ({ sessionId }) => {
                     currentTime={currentTime}
                     isPlaying={isPlaying}
                     onSeek={handleSeek}
+                    activeClip={activeClip}
+                    onBorderRadiusChange={handleBorderRadiusChange}
                     controls={
                         <VideoControls
                             audioUrl={audioUrl}
@@ -1168,6 +1371,7 @@ export const ProjectScreen: React.FC<ProjectScreenProps> = ({ sessionId }) => {
                     }
                 >
                     <VideoLayer
+                        key={`video-${activeClip?.name}-${activeClip?.media?.[0]?.borderRadius ?? 3}`}
                         videoUrl={videoUrl}
                         videoRef={videoRef}
                         videoLayerRef={videoLayerRef}
@@ -1176,6 +1380,14 @@ export const ProjectScreen: React.FC<ProjectScreenProps> = ({ sessionId }) => {
                         currentTime={currentTime}
                         recordingWidth={recordingDimensions?.recordingWidth}
                         recordingHeight={recordingDimensions?.recordingHeight}
+                        hasMedia={currentClipHasMedia}
+                        borderRadius={activeClip?.media?.[0]?.borderRadius ?? 3}
+                        isVideoSelected={isVideoSelected}
+                        onVideoClick={() => {
+                            if (currentClipHasMedia) {
+                                setIsVideoSelected(true);
+                            }
+                        }}
                     />
                 </MainCanvasSection>
             </div>
