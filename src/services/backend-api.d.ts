@@ -99,9 +99,17 @@ export interface ExportOptions {
     aspectRatio?: '16:9' | '9:16' | '1:1' | '4:3' | '3:4' | '4:5' | '5:4' | '1920:1080';
 }
 
+export interface RewriteScriptResponse {
+    narrations: any[];
+    message: string;
+    sessionId: string;
+    rewriteAt: string;
+}
+
 export function processRecording(payload: any): Promise<any>;
 export function processSession(sessionId: string): Promise<ProcessSessionResponse>;
 export function generateSpeech(sessionId: string): Promise<SpeechResponse>;
+export function rewriteScript(sessionId: string): Promise<RewriteScriptResponse>;
 export function rewriteNarrations(sessionId: string): Promise<Narration[]>;
 export function exportVideo(
     sessionId: string,

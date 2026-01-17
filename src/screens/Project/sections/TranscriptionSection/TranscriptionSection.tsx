@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useMemo, useEffect, useRef, memo } from 'react';
 import { Sparkles, MoreHorizontal } from 'lucide-react';
 
 interface WordTiming {
@@ -6,6 +6,73 @@ interface WordTiming {
     start: number;
     end: number;
 }
+
+// Word highlighter using direct DOM manipulation to avoid React re-renders
+interface WordHighlighterProps {
+    text: string;
+    words: WordTiming[];
+    currentTime: number;
+}
+
+const WordHighlighter: React.FC<WordHighlighterProps> = ({ text, words, currentTime }) => {
+    const containerRef = useRef<HTMLSpanElement>(null);
+    const lastHighlightedRef = useRef<HTMLSpanElement | null>(null);
+    
+    // Precompute word mappings once
+    const wordMappings = useMemo(() => {
+        const textWords = text.split(' ');
+        return textWords.map((word, idx) => {
+            const cleanWord = word.toLowerCase().replace(/[.,!?;:]/g, '');
+            const wordData = words.find(w => w.word.toLowerCase() === cleanWord);
+            return { word, wordData, idx };
+        });
+    }, [text, words]);
+
+    // Direct DOM manipulation for highlighting - no React state updates
+    useEffect(() => {
+        if (!containerRef.current) return;
+        
+        const spans = containerRef.current.querySelectorAll('span[data-word-idx]');
+        let newHighlightedSpan: HTMLSpanElement | null = null;
+        
+        // Find which word should be highlighted
+        for (let i = 0; i < wordMappings.length; i++) {
+            const { wordData } = wordMappings[i];
+            if (wordData && currentTime >= wordData.start && currentTime < wordData.end) {
+                newHighlightedSpan = spans[i] as HTMLSpanElement;
+                break;
+            }
+        }
+        
+        // Only update DOM if the highlighted word changed
+        if (newHighlightedSpan !== lastHighlightedRef.current) {
+            // Remove highlight from previous word
+            if (lastHighlightedRef.current) {
+                lastHighlightedRef.current.className = 'text-gray-200';
+            }
+            // Add highlight to new word
+            if (newHighlightedSpan) {
+                newHighlightedSpan.className = 'text-white font-semibold bg-indigo-500/30 px-0.5 rounded';
+            }
+            lastHighlightedRef.current = newHighlightedSpan;
+        }
+    }, [currentTime, wordMappings]);
+
+    // Render once, then DOM manipulation handles updates
+    return (
+        <span ref={containerRef}>
+            {wordMappings.map((mapping, idx) => (
+                <React.Fragment key={idx}>
+                    <span data-word-idx={idx} className="text-gray-200">
+                        {mapping.word}
+                    </span>
+                    {idx < wordMappings.length - 1 && ' '}
+                </React.Fragment>
+            ))}
+            {' '}
+        </span>
+    );
+};
 
 interface Narration {
     start: number;
@@ -30,7 +97,9 @@ interface TranscriptionSectionProps {
     onClose: () => void;
     onSyncPointClick: (timestamp: number) => void;
     onGenerateScript: () => void;
+    onRewriteScript?: () => void; // AI Rewrite handler
     isGenerating: boolean;
+    isRewriting?: boolean; // AI Rewrite loading state
     hasProcessedAudio: boolean;
     currentTime?: number;
     intro?: string; // Intro text from instructions
@@ -43,7 +112,9 @@ export const TranscriptionSection: React.FC<TranscriptionSectionProps> = ({
     onClose,
     onSyncPointClick,
     onGenerateScript,
+    onRewriteScript,
     isGenerating,
+    isRewriting = false,
     hasProcessedAudio,
     currentTime = 0,
     intro,
@@ -93,12 +164,15 @@ export const TranscriptionSection: React.FC<TranscriptionSectionProps> = ({
                     const isFirstInClip = idx === 0;
                     
                     return (
-                        <span key={idx} className={`relative inline`}>
+                        <span 
+                            key={idx} 
+                            className="relative inline"
+                        >
                             {/* Sync Point - small icon badge */}
                             {!isFirstInClip && (
                                 <button
                                     onClick={() => onSyncPointClick(narration.start)}
-                                    className="inline-flex items-center justify-center mx-1 w-4 h-4 rounded-full bg-amber-500 text-white transition-all duration-150 hover:bg-amber-400 hover:scale-110 align-middle"
+                                    className="inline-flex items-center justify-center mx-1 w-4 h-4 rounded-full bg-amber-500 text-white hover:bg-amber-400 hover:scale-110 align-middle"
                                     title={`Jump to ${narration.start.toFixed(2)}s`}
                                 >
                                     <svg width="8" height="8" viewBox="0 0 24 24" fill="currentColor">
@@ -108,35 +182,14 @@ export const TranscriptionSection: React.FC<TranscriptionSectionProps> = ({
                                 </button>
                             )}
                             
-                            {hasProcessedAudio ? (
+                            {hasProcessedAudio && narration.words && narration.words.length > 0 ? (
                                 // AFTER SPEECH GENERATION: Word-level highlighting on full text
-                                <>
-                                    {narration.text.split(' ').map((word, wordIdx) => {
-                                        const cleanWord = word.toLowerCase().replace(/[.,!?;:]/g, '');
-                                        const wordData = narration.words && narration.words.length > 0
-                                            ? narration.words.find(w => w.word.toLowerCase() === cleanWord)
-                                            : null;
-                                        const isCurrentWord = wordData 
-                                            ? currentTime >= wordData.start && currentTime < wordData.end
-                                            : false;
-                                        
-                                        return (
-                                            <React.Fragment key={wordIdx}>
-                                                <span
-                                                    className={`transition-all duration-100 ${
-                                                        isCurrentWord
-                                                            ? 'text-white font-semibold bg-indigo-500/30 px-0.5 rounded'
-                                                            : 'text-gray-200'
-                                                    }`}
-                                                >
-                                                    {word}
-                                                </span>
-                                                {wordIdx < narration.text.split(' ').length - 1 && ' '}
-                                            </React.Fragment>
-                                        );
-                                    })}
-                                    {' '}
-                                </>
+                                // Only show if words array exists (cleared after AI rewrite)
+                                <WordHighlighter 
+                                    text={narration.text} 
+                                    words={narration.words} 
+                                    currentTime={currentTime} 
+                                />
                             ) : (
                                 <span className="text-gray-200">
                                     {narration.text}{' '}
@@ -224,9 +277,26 @@ export const TranscriptionSection: React.FC<TranscriptionSectionProps> = ({
                     </button>
 
                     {/* AI Rewrite Button */}
-                    <button className="h-9 inline-flex items-center justify-center gap-2 px-4 bg-white/5 hover:bg-white/10 text-white rounded-lg text-sm font-medium transition-all duration-200 border border-white/10 hover:border-white/20">
-                        <Sparkles size={14} />
-                        <span>AI Rewrite</span>
+                    <button 
+                        onClick={onRewriteScript}
+                        disabled={isRewriting || !onRewriteScript}
+                        className={`h-9 inline-flex items-center justify-center gap-2 px-4 rounded-lg text-sm font-medium transition-all duration-200 border ${
+                            isRewriting 
+                                ? 'bg-purple-500/20 text-purple-300 border-purple-500/30 cursor-not-allowed'
+                                : 'bg-white/5 hover:bg-white/10 text-white border-white/10 hover:border-white/20'
+                        }`}
+                    >
+                        {isRewriting ? (
+                            <>
+                                <div className="w-3.5 h-3.5 border-2 border-purple-300/30 border-t-purple-300 rounded-full animate-spin" />
+                                <span>Rewriting...</span>
+                            </>
+                        ) : (
+                            <>
+                                <Sparkles size={14} className="text-purple-400" />
+                                <span>AI Rewrite</span>
+                            </>
+                        )}
                     </button>
 
                     {/* Add button */}

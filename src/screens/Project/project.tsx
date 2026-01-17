@@ -12,7 +12,7 @@ import { VideoLayer, VideoControls } from './sections/VideoPlayerSection';
 // Services & Hooks
 import { useProcessingWebSocket } from '../../hooks/useProcessingWebSocket';
 import { useChangeTracking } from '../../hooks/useChangeTracking';
-import { generateSpeech, exportVideo } from '../../services/backend-api';
+import { generateSpeech, exportVideo, rewriteScript } from '../../services/backend-api';
 import { getJSONPath } from '../../utils/changeTrackingHelpers';
 import {
     normalizeCoordinates,
@@ -108,6 +108,7 @@ export const ProjectScreen: React.FC<ProjectScreenProps> = ({ sessionId }) => {
     // ============== PROCESSING STATE ==============
     const [preparing, setPreparing] = useState(true);
     const [generatingSpeech, setGeneratingSpeech] = useState(false);
+    const [rewritingScript, setRewritingScript] = useState(false);
     const [exporting, setExporting] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [cdnData, setCdnData] = useState<any>(null); // Raw CDN data, hook will merge with localStorage
@@ -1240,6 +1241,48 @@ export const ProjectScreen: React.FC<ProjectScreenProps> = ({ sessionId }) => {
         }
     };
 
+    // Handle AI Rewrite button click
+    const handleRewriteScript = async () => {
+        if (!sessionId) return;
+
+        // Pause playback
+        const video = videoRef.current;
+        const audio = audioRef.current;
+        if (video) video.pause();
+        if (audio) audio.pause();
+        setIsPlaying(false);
+
+        setRewritingScript(true);
+        setError(null);
+
+        try {
+            console.log('[AI Rewrite] Starting rewrite for session:', sessionId);
+            
+            // Call the rewrite API
+            const result = await rewriteScript(sessionId);
+            
+            console.log('[AI Rewrite] Received result:', result);
+
+            // Update the narrations in results state with animation
+            if (result.narrations) {
+                setResults((prev: any) => ({
+                    ...prev,
+                    narrations: result.narrations
+                }));
+
+                // Clear speech generated flag since script changed
+                setHasSpeechGenerated(false);
+                
+                console.log('[AI Rewrite] Updated narrations in state');
+            }
+        } catch (err: any) {
+            console.error('[AI Rewrite] Error:', err);
+            setError('AI Rewrite failed: ' + err.message);
+        } finally {
+            setRewritingScript(false);
+        }
+    };
+
     const handleSyncPointClick = (timestamp: number) => {
         handleSeek(timestamp);
     };
@@ -1385,7 +1428,9 @@ export const ProjectScreen: React.FC<ProjectScreenProps> = ({ sessionId }) => {
                         onClose={() => setActiveSidebarItem(null)}
                         onSyncPointClick={handleSyncPointClick}
                         onGenerateScript={handleGenerateSpeech}
+                        onRewriteScript={handleRewriteScript}
                         isGenerating={generatingSpeech}
+                        isRewriting={rewritingScript}
                         hasProcessedAudio={hasSpeechGenerated}
                         currentTime={currentTime}
                         intro={results?.intro || undefined}

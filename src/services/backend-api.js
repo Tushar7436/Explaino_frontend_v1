@@ -79,11 +79,12 @@ export async function generateSpeech(sessionId) {
 
 /**
  * Rewrite narrations using AI (called when user clicks "AI Rewrite" button)
+ * This rewrites the video script text while keeping timing, and identifies key sync points
  * @param {string} sessionId - Session ID
- * @returns {Promise<Array>} Array of new narrations
+ * @returns {Promise<Object>} Object with { narrations, message, rewriteAt }
  */
-export async function rewriteNarrations(sessionId) {
-    const response = await fetch(`${API_BASE_URL}/api/regenerate-script`, {
+export async function rewriteScript(sessionId) {
+    const response = await fetch(`${API_BASE_URL}/api/rewrite-script`, {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json',
@@ -97,11 +98,11 @@ export async function rewriteNarrations(sessionId) {
     }
 
     const result = await response.json();
-    // API returns { success: true, data: { narrations: [...] } }
-    if (result.data && result.data.narrations) {
-        return result.data.narrations;
+    // API returns { success: true, data: { narrations: [...], message, rewriteAt } }
+    if (result.data) {
+        return result.data;
     }
-    return result.data || result;
+    return result;
 }
 
 /**

@@ -491,7 +491,7 @@ export const MainCanvasSection: React.FC<MainCanvasSectionProps> = ({
                                 >
                                     {/* Upper Layers area - effects/elements, scrollable if many rows */}
                                     <div
-                                        className="absolute top-0 left-0 right-0 bottom-[28px] overflow-y-auto overflow-x-hidden bg-[#0d0d15] scrollbar-thin scrollbar-thumb-gray-600/50 scrollbar-track-transparent hover:scrollbar-thumb-gray-500/70"
+                                        className="absolute top-0 left-0 right-0 bottom-[28px] overflow-y-auto overflow-x-hidden bg-[#0d0d15]"
                                         style={{
                                             scrollbarWidth: 'thin',
                                             scrollbarColor: 'rgba(75, 85, 99, 0.5) transparent',
@@ -501,8 +501,11 @@ export const MainCanvasSection: React.FC<MainCanvasSectionProps> = ({
                                     >
                                     <div 
                                         ref={timelineRef}
-                                        className="relative h-full"
-                                        style={{ minHeight: '100%' }}
+                                        className="relative"
+                                        style={{ 
+                                            minHeight: '100%',
+                                            height: `${Math.max((maxRow + 1) * 18 + 8, 50)}px`
+                                        }}
                                         onClick={(e) => {
                                             if (!timelineRef.current || !onSeek) return;
                                             const rect = timelineRef.current.getBoundingClientRect();
