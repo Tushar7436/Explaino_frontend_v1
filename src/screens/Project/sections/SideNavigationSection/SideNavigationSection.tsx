@@ -14,11 +14,13 @@ interface MenuItemProps {
     isActive: boolean;
     onClick: () => void;
     badge?: string;
+    dataAttribute?: string;
 }
 
-const MenuItem: React.FC<MenuItemProps> = ({ icon, label, isActive, onClick, badge }) => (
+const MenuItem: React.FC<MenuItemProps> = ({ icon, label, isActive, onClick, badge, dataAttribute }) => (
     <button
         onClick={onClick}
+        {...(dataAttribute ? { [dataAttribute]: 'true' } : {})}
         className={`w-full flex flex-col items-center gap-1.5 py-3 px-2 rounded-xl transition-all duration-200 group relative ${
             isActive
                 ? 'bg-gradient-to-b from-indigo-500/20 to-indigo-600/10 text-white shadow-lg shadow-indigo-500/10'
@@ -64,6 +66,7 @@ export const SideNavigationSection: React.FC<SideNavigationSectionProps> = ({
                         isActive={activeItem === item.id}
                         onClick={() => onItemClick(item.id)}
                         badge={item.badge}
+                        dataAttribute={item.id === 'elements' ? 'data-sidebar-elements' : undefined}
                     />
                 ))}
             </nav>

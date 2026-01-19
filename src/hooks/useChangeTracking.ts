@@ -149,33 +149,39 @@ export function useChangeTracking(
           age: Math.round(age / 1000) + 's',
           changes: backup.changeStack?.length || 0,
           timestamp: new Date(backup.timestamp).toISOString(),
-          hasChanges: backup.changeStack && backup.changeStack.length > 0
+          hasChanges: backup.changeStack && backup.changeStack.length > 0,
+          hasResults: !!backup.results
         });
 
         // Only restore if backup is less than 24 hours old
         if (age < 86400000 && backup.changeStack && backup.changeStack.length > 0) {
-          console.log('[ChangeTracking] 🔄 Starting merge of', backup.changeStack.length, 'changes...');
-          console.log('[ChangeTracking] Change stack:', backup.changeStack);
+          console.log('[ChangeTracking] 🔄 Restoring backup with', backup.changeStack.length, 'changes...');
           
           setIsMerging(true);
           
-          // Apply all changes from stack to fresh CDN data
-          let mergedResults = initialResults;
-          for (let i = 0; i < backup.changeStack.length; i++) {
-            const change = backup.changeStack[i];
-            console.log(`[ChangeTracking] Applying change ${i+1}/${backup.changeStack.length}:`, change);
-            mergedResults = applyChangeToResults(mergedResults, change);
+          // USE THE BACKED UP RESULTS DIRECTLY - they already have changes applied
+          // This ensures text element changes and other complex changes are preserved
+          if (backup.results) {
+            console.log('[ChangeTracking] Using backed-up results directly (already has changes applied)');
+            setResults(backup.results);
+          } else {
+            // Fallback: replay changes if no results in backup (legacy backups)
+            console.log('[ChangeTracking] Fallback: replaying changes on CDN data');
+            let mergedResults = initialResults;
+            for (let i = 0; i < backup.changeStack.length; i++) {
+              const change = backup.changeStack[i];
+              console.log(`[ChangeTracking] Applying change ${i+1}/${backup.changeStack.length}:`, change);
+              mergedResults = applyChangeToResults(mergedResults, change);
+            }
+            setResults(mergedResults);
           }
-
-          console.log('[ChangeTracking] Setting merged results...');
-          setResults(mergedResults);
+          
           setChangeStack(backup.changeStack);
           
           // Small delay to ensure state updates propagate
           setTimeout(() => {
             setIsMerging(false);
-            console.log('[ChangeTracking] ✅ Merge complete - you have', backup.changeStack.length, 'unsaved changes');
-            console.log('[ChangeTracking] Merged results preview:', JSON.stringify(mergedResults).substring(0, 300));
+            console.log('[ChangeTracking] ✅ Restore complete - you have', backup.changeStack.length, 'unsaved changes');
           }, 100);
         } else {
           // No valid backup, use CDN data as-is
@@ -189,7 +195,7 @@ export function useChangeTracking(
           }
         }
       } catch (err) {
-        console.warn('[ChangeTracking] Failed to merge backup, using CDN data:', err);
+        console.warn('[ChangeTracking] Failed to restore backup, using CDN data:', err);
         setResults(initialResults);
       }
     } else {

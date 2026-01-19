@@ -20,6 +20,7 @@ export interface NormalizedBounds extends BoundingBox {
     heightRatio: number;
     dominantRatio: number;
     effectiveRatio: number;
+    scaleFromBackend: boolean;
 }
 
 export interface TransformResult {
@@ -52,7 +53,8 @@ export function normalizeCoordinates(
     recordingWidth: number,
     recordingHeight: number,
     videoWidth: number,
-    videoHeight: number
+    videoHeight: number,
+    precomputedScale?: number
 ): NormalizedBounds;
 
 export function easeInOutCubic(t: number): number;

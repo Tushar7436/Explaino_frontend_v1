@@ -25,6 +25,16 @@ export function getJSONPath(type: string, clipName?: string, index?: number): st
       return clipName ? `timeline.clips[${clipName}].media[0].borderRadius` : 'borderRadius';
     case 'aspectRatio':
       return 'aspectRatio';
+    case 'textElementDuration':
+      // Store as descriptive path - actual changes are applied directly to results
+      return clipName !== undefined && index !== undefined 
+        ? `displayElements.clip[${clipName}].elements[${index}].timing` 
+        : 'textElementDuration';
+    case 'textElementDelete':
+      // Store as descriptive path - actual changes are applied directly to results
+      return clipName !== undefined && index !== undefined 
+        ? `displayElements.clip[${clipName}].elements[${index}].deleted` 
+        : 'textElementDelete';
     default:
       return `${type}${index !== undefined ? `[${index}]` : ''}`;
   }

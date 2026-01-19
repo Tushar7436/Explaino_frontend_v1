@@ -8,6 +8,7 @@ import { TranscriptionSection } from './sections/TranscriptionSection';
 import { MusicSection } from './sections/MusicSection';
 import { MainCanvasSection, AspectRatio } from './sections/MainCanvasSection';
 import { VideoLayer, VideoControls } from './sections/VideoPlayerSection';
+import { TextEditPanel } from './sections/TextEditPanel';
 
 // Services & Hooks
 import { useProcessingWebSocket } from '../../hooks/useProcessingWebSocket';
@@ -146,6 +147,15 @@ export const ProjectScreen: React.FC<ProjectScreenProps> = ({ sessionId }) => {
     // ============== VIDEO SELECTION STATE ==============
     const [isVideoSelected, setIsVideoSelected] = useState(false);
     
+    // ============== TEXT SELECTION STATE ==============
+    const [isTextSelected, setIsTextSelected] = useState(false);
+    const [selectedTextElement, setSelectedTextElement] = useState<{
+        clipName: string;
+        elementIndex: number;
+        element: any;
+    } | null>(null);
+    const [isTextEditPanelOpen, setIsTextEditPanelOpen] = useState(false);
+    
     // Check if current active clip has media (video/image)
     const currentClipHasMedia = activeClip?.media && activeClip.media.length > 0;
     
@@ -199,6 +209,412 @@ export const ProjectScreen: React.FC<ProjectScreenProps> = ({ sessionId }) => {
             });
         }
     };
+
+    // ============== TEXT ELEMENT RESIZE HANDLER ==============
+    const handleTextElementResize = useCallback((clipName: string, elementIndex: number, newStart: number, newEnd: number) => {
+        if (!results?.displayElements) {
+            console.log('[handleTextElementResize] No displayElements, returning');
+            return;
+        }
+
+        console.log('[handleTextElementResize] Resizing text element:', { clipName, elementIndex, newStart, newEnd });
+
+        // Find the clip in displayElements
+        const clipIndex = results.displayElements.findIndex((clip: any) => clip.clipName === clipName);
+        if (clipIndex === -1) {
+            console.log('[handleTextElementResize] Clip not found:', clipName);
+            return;
+        }
+
+        const clip = results.displayElements[clipIndex];
+        if (!clip.elements || !clip.elements[elementIndex]) {
+            console.log('[handleTextElementResize] Element not found:', elementIndex);
+            return;
+        }
+
+        const element = clip.elements[elementIndex];
+        const oldStart = element.start;
+        const oldEnd = element.end;
+
+        // Update the element
+        const updatedElements = [...clip.elements];
+        updatedElements[elementIndex] = {
+            ...element,
+            start: newStart,
+            end: newEnd
+        };
+
+        // Update the clip
+        const updatedDisplayElements = [...results.displayElements];
+        updatedDisplayElements[clipIndex] = {
+            ...clip,
+            elements: updatedElements
+        };
+
+        // Update results
+        setResults({
+            ...results,
+            displayElements: updatedDisplayElements
+        });
+
+        // Update textElements state for live preview
+        const allTextElements = updatedDisplayElements.flatMap((c: any) => c.elements || []);
+        setTextElements(allTextElements);
+
+        // Track change
+        trackChange({
+            type: 'textElementDuration',
+            clipName: clipName,
+            path: getJSONPath('textElementDuration', clipName, elementIndex),
+            oldValue: { start: oldStart, end: oldEnd },
+            newValue: { start: newStart, end: newEnd }
+        });
+
+        console.log('[handleTextElementResize] Updated element:', { oldStart, oldEnd, newStart, newEnd });
+    }, [results, setResults, trackChange, setTextElements]);
+
+    // ============== TEXT ELEMENT DELETE HANDLER ==============
+    const handleTextElementDelete = useCallback((clipName: string, elementIndex: number) => {
+        if (!results?.displayElements) {
+            console.log('[handleTextElementDelete] No displayElements, returning');
+            return;
+        }
+
+        console.log('[handleTextElementDelete] Deleting text element:', { clipName, elementIndex });
+
+        // Find the clip in displayElements
+        const clipIndex = results.displayElements.findIndex((clip: any) => clip.clipName === clipName);
+        if (clipIndex === -1) {
+            console.log('[handleTextElementDelete] Clip not found:', clipName);
+            return;
+        }
+
+        const clip = results.displayElements[clipIndex];
+        if (!clip.elements || !clip.elements[elementIndex]) {
+            console.log('[handleTextElementDelete] Element not found:', elementIndex);
+            return;
+        }
+
+        const deletedElement = clip.elements[elementIndex];
+
+        // Remove the element from the array
+        const updatedElements = clip.elements.filter((_: any, idx: number) => idx !== elementIndex);
+
+        // Update the clip
+        const updatedDisplayElements = [...results.displayElements];
+        updatedDisplayElements[clipIndex] = {
+            ...clip,
+            elements: updatedElements
+        };
+
+        // Update results
+        setResults({
+            ...results,
+            displayElements: updatedDisplayElements
+        });
+
+        // Update textElements state for live preview
+        const allTextElements = updatedDisplayElements.flatMap((c: any) => c.elements || []);
+        setTextElements(allTextElements);
+
+        // Track change
+        trackChange({
+            type: 'textElementDelete',
+            clipName: clipName,
+            path: getJSONPath('textElementDelete', clipName, elementIndex),
+            oldValue: deletedElement,
+            newValue: null
+        });
+
+        console.log('[handleTextElementDelete] Deleted element:', deletedElement);
+    }, [results, setResults, trackChange, setTextElements]);
+
+    // ============== TEXT SELECTION HANDLERS ==============
+    const handleTextSelect = useCallback((clipName: string, elementIndex: number, element: any) => {
+        console.log('[handleTextSelect] Selected text element:', { clipName, elementIndex, element });
+        setSelectedTextElement({ clipName, elementIndex, element });
+        setIsTextSelected(true);
+        setIsVideoSelected(false); // Deselect video when text is selected
+        setIsTextEditPanelOpen(true); // Open the edit panel
+        setActiveSidebarItem('elements'); // Switch to Elements sidebar
+    }, []);
+
+    const handleTextDeselect = useCallback(() => {
+        console.log('[handleTextDeselect] Deselecting text element');
+        setSelectedTextElement(null);
+        setIsTextSelected(false);
+        setIsTextEditPanelOpen(false);
+    }, []);
+
+    // Click outside detection to deselect text elements
+    // Deselect when clicking anywhere except:
+    // - Textbox block in timeline track (has data-text-block)
+    // - TextEditPanel sidebar (has data-text-edit-panel)
+    // - Elements button in sidebar (has data-sidebar-elements)
+    // - Play/pause button (has data-play-pause)
+    // - TextOverlay on canvas (has data-text-overlay)
+    // - TextEditToolbar (has data-text-toolbar)
+    useEffect(() => {
+        if (!isTextSelected) return;
+
+        const handleGlobalClick = (e: MouseEvent) => {
+            const target = e.target as HTMLElement;
+            
+            // Check if clicking on allowed elements
+            const isAllowed = 
+                target.closest('[data-text-block]') ||
+                target.closest('[data-text-edit-panel]') ||
+                target.closest('[data-sidebar-elements]') ||
+                target.closest('[data-play-pause]') ||
+                target.closest('[data-text-overlay]') ||
+                target.closest('[data-text-toolbar]') ||
+                target.closest('[data-color-picker]');
+            
+            if (!isAllowed) {
+                console.log('[Click Outside] Deselecting text element');
+                handleTextDeselect();
+            }
+        };
+
+        // Use setTimeout to allow click events to propagate first
+        const timeoutId = setTimeout(() => {
+            document.addEventListener('click', handleGlobalClick);
+        }, 100);
+
+        return () => {
+            clearTimeout(timeoutId);
+            document.removeEventListener('click', handleGlobalClick);
+        };
+    }, [isTextSelected, handleTextDeselect]);
+
+    const handleTextMove = useCallback((clipName: string, elementIndex: number, newX: number, newY: number) => {
+        if (!results?.displayElements) return;
+
+        const clipIndex = results.displayElements.findIndex((clip: any) => clip.clipName === clipName);
+        if (clipIndex === -1) return;
+
+        const clip = results.displayElements[clipIndex];
+        if (!clip.elements || !clip.elements[elementIndex]) return;
+
+        const element = clip.elements[elementIndex];
+        const oldPosition = { ...element.position };
+
+        // Update the element position
+        const updatedElements = [...clip.elements];
+        updatedElements[elementIndex] = {
+            ...element,
+            position: { x: newX, y: newY }
+        };
+
+        // Update the clip
+        const updatedDisplayElements = [...results.displayElements];
+        updatedDisplayElements[clipIndex] = {
+            ...clip,
+            elements: updatedElements
+        };
+
+        // Update results
+        setResults({
+            ...results,
+            displayElements: updatedDisplayElements
+        });
+
+        // Update textElements state for live preview
+        const allTextElements = updatedDisplayElements.flatMap((c: any) => c.elements || []);
+        setTextElements(allTextElements);
+
+        // Update selected element reference
+        setSelectedTextElement(prev => prev ? {
+            ...prev,
+            element: updatedElements[elementIndex]
+        } : null);
+
+        // Track change (debounced - only track on mouse up, not during drag)
+    }, [results, setResults, setTextElements]);
+
+    const handleTextResize = useCallback((clipName: string, elementIndex: number, newWidth: number, newHeight: number, resizeType?: 'horizontal' | 'diagonal') => {
+        if (!results?.displayElements) return;
+
+        const clipIndex = results.displayElements.findIndex((clip: any) => clip.clipName === clipName);
+        if (clipIndex === -1) return;
+
+        const clip = results.displayElements[clipIndex];
+        if (!clip.elements || !clip.elements[elementIndex]) return;
+
+        const element = clip.elements[elementIndex];
+        const originalFontSize = element.style?.fontSize || 129;
+        
+        let finalWidth = newWidth;
+        let finalHeight = newHeight;
+        let finalFontSize = originalFontSize;
+        
+        if (resizeType === 'horizontal') {
+            // Horizontal resize: keep font size, auto-calculate height based on text content
+            // The height needs to accommodate the text at the current font size
+            // We'll calculate how many lines the text would need at the new width
+            
+            // Estimate character width (roughly 0.5 * fontSize for most fonts)
+            const avgCharWidth = originalFontSize * 0.55;
+            const textContent = element.content || '';
+            const charsPerLine = Math.max(1, Math.floor(newWidth / avgCharWidth));
+            
+            // Split text into words and calculate lines needed
+            const words = textContent.split(' ');
+            let lines = 1;
+            let currentLineLength = 0;
+            
+            for (const word of words) {
+                const wordLength = word.length * avgCharWidth + avgCharWidth; // +1 for space
+                if (currentLineLength + wordLength > newWidth && currentLineLength > 0) {
+                    lines++;
+                    currentLineLength = wordLength;
+                } else {
+                    currentLineLength += wordLength;
+                }
+            }
+            
+            // Calculate height based on number of lines (line height ~1.2)
+            const lineHeight = originalFontSize * 1.3;
+            const padding = originalFontSize * 0.5; // Some padding
+            finalHeight = Math.max(originalFontSize + padding, lines * lineHeight + padding);
+            finalWidth = newWidth;
+            finalFontSize = originalFontSize; // Keep font size unchanged
+        } else {
+            // Diagonal resize: scale font size proportionally
+            const originalHeight = element.dimension.height;
+            const heightRatio = newHeight / originalHeight;
+            
+            // Minimum font size is 24px (industry standard minimum for readability)
+            const MIN_FONT_SIZE = 24;
+            const calculatedFontSize = Math.round(originalFontSize * heightRatio);
+            
+            if (calculatedFontSize < MIN_FONT_SIZE) {
+                // Hit minimum font size - stop scaling, just adjust dimensions
+                finalFontSize = MIN_FONT_SIZE;
+                // Recalculate dimensions to maintain aspect ratio at minimum font size
+                const minRatio = MIN_FONT_SIZE / originalFontSize;
+                finalWidth = element.dimension.width * minRatio;
+                finalHeight = element.dimension.height * minRatio;
+            } else {
+                finalFontSize = Math.min(500, calculatedFontSize); // Max 500px
+                finalWidth = newWidth;
+                finalHeight = newHeight;
+            }
+        }
+
+        // Update the element dimension and font size
+        const updatedElements = [...clip.elements];
+        updatedElements[elementIndex] = {
+            ...element,
+            dimension: { width: finalWidth, height: finalHeight },
+            style: {
+                ...element.style,
+                fontSize: finalFontSize
+            }
+        };
+
+        // Update the clip
+        const updatedDisplayElements = [...results.displayElements];
+        updatedDisplayElements[clipIndex] = {
+            ...clip,
+            elements: updatedElements
+        };
+
+        // Update results
+        setResults({
+            ...results,
+            displayElements: updatedDisplayElements
+        });
+
+        // Update textElements state for live preview
+        const allTextElements = updatedDisplayElements.flatMap((c: any) => c.elements || []);
+        setTextElements(allTextElements);
+
+        // Update selected element reference
+        setSelectedTextElement(prev => prev ? {
+            ...prev,
+            element: updatedElements[elementIndex]
+        } : null);
+    }, [results, setResults, setTextElements]);
+
+    const handleTextElementUpdate = useCallback((updates: Partial<any>) => {
+        if (!selectedTextElement || !results?.displayElements) return;
+
+        const { clipName, elementIndex } = selectedTextElement;
+        const clipIndex = results.displayElements.findIndex((clip: any) => clip.clipName === clipName);
+        if (clipIndex === -1) return;
+
+        const clip = results.displayElements[clipIndex];
+        if (!clip.elements || !clip.elements[elementIndex]) return;
+
+        const element = clip.elements[elementIndex];
+        const oldElement = { ...element };
+
+        // Calculate new dimensions if font size is changing
+        let dimensionUpdate = {};
+        if (updates.style?.fontSize && element.style?.fontSize) {
+            const oldFontSize = element.style.fontSize;
+            const newFontSize = updates.style.fontSize;
+            const scale = newFontSize / oldFontSize;
+            
+            // Scale dimensions proportionally with font size
+            dimensionUpdate = {
+                dimension: {
+                    width: element.dimension.width * scale,
+                    height: element.dimension.height * scale
+                }
+            };
+        }
+
+        // Merge updates into element
+        const updatedElement = {
+            ...element,
+            ...updates,
+            ...dimensionUpdate,
+            style: {
+                ...element.style,
+                ...(updates.style || {})
+            }
+        };
+
+        // Update the element
+        const updatedElements = [...clip.elements];
+        updatedElements[elementIndex] = updatedElement;
+
+        // Update the clip
+        const updatedDisplayElements = [...results.displayElements];
+        updatedDisplayElements[clipIndex] = {
+            ...clip,
+            elements: updatedElements
+        };
+
+        // Update results
+        setResults({
+            ...results,
+            displayElements: updatedDisplayElements
+        });
+
+        // Update textElements state for live preview
+        const allTextElements = updatedDisplayElements.flatMap((c: any) => c.elements || []);
+        setTextElements(allTextElements);
+
+        // Update selected element reference
+        setSelectedTextElement(prev => prev ? {
+            ...prev,
+            element: updatedElement
+        } : null);
+
+        // Track change
+        trackChange({
+            type: 'textElementStyle',
+            clipName: clipName,
+            path: `displayElements.${clipIndex}.elements.${elementIndex}`,
+            oldValue: oldElement,
+            newValue: updatedElement
+        });
+
+        console.log('[handleTextElementUpdate] Updated element:', updatedElement);
+    }, [selectedTextElement, results, setResults, setTextElements, trackChange]);
 
     // ============== GLOBAL CLICK LISTENER FOR VIDEO DESELECTION ==============
     // Deselect video when clicking outside video area (on background or other UI elements)
@@ -367,6 +783,7 @@ export const ProjectScreen: React.FC<ProjectScreenProps> = ({ sessionId }) => {
     }, [results]);
     const showTranscriptionPanel = activeSidebarItem === 'script';
     const showMusicPanel = activeSidebarItem === 'music';
+    const showElementsPanel = activeSidebarItem === 'elements';
 
     // ============== EFFECTS ==============
 
@@ -651,10 +1068,28 @@ export const ProjectScreen: React.FC<ProjectScreenProps> = ({ sessionId }) => {
                 }
             }
             
-            console.log('[Video] Loaded metadata - Width:', video.videoWidth, 'Height:', video.videoHeight);
+            // Try to get recording dimensions from backend timeline first
+            // Fall back to video element dimensions
+            let width = video.videoWidth;
+            let height = video.videoHeight;
+            
+            // Check if backend provided recording dimensions in timeline media
+            if (results?.timeline?.clips) {
+                const videoClip = results.timeline.clips.find((c: any) => c.name === 'video');
+                if (videoClip?.media?.[0]) {
+                    const media = videoClip.media[0];
+                    if (media.recordingWidth && media.recordingHeight) {
+                        width = media.recordingWidth;
+                        height = media.recordingHeight;
+                        console.log('[Video] Using backend-provided dimensions:', width, 'x', height);
+                    }
+                }
+            }
+            
+            console.log('[Video] Loaded metadata - Width:', width, 'Height:', height);
             setRecordingDimensions({
-                recordingWidth: video.videoWidth,
-                recordingHeight: video.videoHeight
+                recordingWidth: width,
+                recordingHeight: height
             });
             // Set aspect ratio to original video dimensions
             console.log('[Video] Setting aspect ratio to 1920:1080 (original)');
@@ -737,12 +1172,15 @@ export const ProjectScreen: React.FC<ProjectScreenProps> = ({ sessionId }) => {
             .filter((effect: any) => effect.target?.bounds && effect.style?.zoom?.enabled);
 
         const normalized = filtered.map((effect: any) => {
+            // Use backend-computed scale if available, otherwise calculate locally
+            const precomputedScale = effect.scale && effect.scale > 0 ? effect.scale : undefined;
             const normalizedBounds = normalizeCoordinates(
                 effect.target.bounds,
                 recordingDimensions.recordingWidth,
                 recordingDimensions.recordingHeight,
                 recordingDimensions.recordingWidth,
-                recordingDimensions.recordingHeight
+                recordingDimensions.recordingHeight,
+                precomputedScale
             );
             return { ...effect, normalizedBounds };
         });
@@ -1450,6 +1888,26 @@ export const ProjectScreen: React.FC<ProjectScreenProps> = ({ sessionId }) => {
                     />
                 )}
 
+                {/* Elements Panel - Text Edit (conditionally shown) */}
+                {showElementsPanel && (
+                    <TextEditPanel
+                        isOpen={isTextEditPanelOpen && isTextSelected}
+                        onClose={handleTextDeselect}
+                        element={selectedTextElement?.element || null}
+                        clipName={selectedTextElement?.clipName || ''}
+                        elementIndex={selectedTextElement?.elementIndex || 0}
+                        clipStart={0}
+                        clipEnd={duration}
+                        onUpdate={handleTextElementUpdate}
+                        onDelete={() => {
+                            if (selectedTextElement) {
+                                handleTextElementDelete(selectedTextElement.clipName, selectedTextElement.elementIndex);
+                                handleTextDeselect();
+                            }
+                        }}
+                    />
+                )}
+
                 {/* Main Canvas */}
                 <MainCanvasSection
                     aspectRatio={aspectRatio}
@@ -1500,6 +1958,22 @@ export const ProjectScreen: React.FC<ProjectScreenProps> = ({ sessionId }) => {
                     videoHeight={recordingDimensions?.recordingHeight}
                     isGeneratingSpeech={generatingSpeech}
                     isVideoSelected={isVideoSelected}
+                    isTextSelected={isTextSelected}
+                    selectedTextElement={selectedTextElement}
+                    onTextFontFamilyChange={(fontFamily) => handleTextElementUpdate({ style: { fontFamily } })}
+                    onTextFontSizeChange={(fontSize) => handleTextElementUpdate({ style: { fontSize } })}
+                    onTextFontWeightChange={(fontWeight) => handleTextElementUpdate({ style: { fontWeight } })}
+                    onTextBoldChange={(isBold) => handleTextElementUpdate({ style: { fontWeight: isBold ? 'bold' : 'normal' } })}
+                    onTextItalicChange={(isItalic) => handleTextElementUpdate({ style: { fontStyle: isItalic ? 'italic' : 'normal' } })}
+                    onTextUnderlineChange={(isUnderline) => handleTextElementUpdate({ style: { textDecoration: isUnderline ? 'underline' : 'none' } })}
+                    onTextAlignChange={(textAlign) => handleTextElementUpdate({ style: { textAlign } })}
+                    onTextColorChange={(color) => handleTextElementUpdate({ style: { color } })}
+                    onTextDelete={() => {
+                        if (selectedTextElement) {
+                            handleTextElementDelete(selectedTextElement.clipName, selectedTextElement.elementIndex);
+                            handleTextDeselect();
+                        }
+                    }}
                     timeline={results?.timeline?.clips || []}
                     displayElements={results?.displayElements || results?.displayEffects}
                     narrations={narrations}
@@ -1511,6 +1985,9 @@ export const ProjectScreen: React.FC<ProjectScreenProps> = ({ sessionId }) => {
                     onSeek={handleSeek}
                     activeClip={activeClip}
                     onBorderRadiusChange={handleBorderRadiusChange}
+                    onTextElementResize={handleTextElementResize}
+                    onTextElementDelete={handleTextElementDelete}
+                    onTextBlockClick={handleTextSelect}
                     controls={
                         <VideoControls
                             audioUrl={audioUrl}
@@ -1544,8 +2021,15 @@ export const ProjectScreen: React.FC<ProjectScreenProps> = ({ sessionId }) => {
                         onVideoClick={() => {
                             if (currentClipHasMedia) {
                                 setIsVideoSelected(true);
+                                handleTextDeselect(); // Deselect text when video is clicked
                             }
                         }}
+                        selectedTextElement={selectedTextElement}
+                        onTextSelect={handleTextSelect}
+                        onTextDeselect={handleTextDeselect}
+                        onTextMove={handleTextMove}
+                        onTextResize={handleTextResize}
+                        displayElements={results?.displayElements || results?.displayEffects}
                     />
                 </MainCanvasSection>
             </div>

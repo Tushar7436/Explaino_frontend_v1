@@ -14,9 +14,10 @@
  * @param {number} recordingHeight - Original recording height (e.g., 854)
  * @param {number} videoWidth - Video width (should equal recordingWidth)
  * @param {number} videoHeight - Video height (should equal recordingHeight)
+ * @param {number} [precomputedScale] - Optional pre-computed scale from backend (if provided, skips local calculation)
  * @returns {Object} Normalized bounds with centerX, centerY, anchorX, anchorY, and autoScale
  */
-export function normalizeCoordinates(bounds, recordingWidth, recordingHeight, videoWidth, videoHeight) {
+export function normalizeCoordinates(bounds, recordingWidth, recordingHeight, videoWidth, videoHeight, precomputedScale) {
     // Calculate center position in video coordinates
     // Since bounds are already in recording space and video = recording, this is just the center
     const centerX = bounds.x + bounds.width / 2;
@@ -45,28 +46,34 @@ export function normalizeCoordinates(bounds, recordingWidth, recordingHeight, vi
     // This ensures wide text bars get proper zoom even if area is medium
     const effectiveRatio = Math.max(areaRatio, dominantRatio);
 
-    // Auto-scale formula based on effective ratio
-    // INCREASED ZOOM SCALES for more dramatic effect
-    // Small elements (< 1% effective) -> high zoom (2.0x - 2.5x)
-    // Medium elements (1-10% effective) -> medium zoom (1.5x - 2.0x)
-    // Large elements (> 10% effective) -> moderate zoom (1.2x - 1.5x)
+    // Use precomputed scale from backend if provided, otherwise calculate locally
     let autoScale;
-    if (effectiveRatio < 0.01) {
-        // Very small element (< 1% of screen)
-        autoScale = 2.0 + (0.01 - effectiveRatio) / 0.01 * 0.5; // 2.0x to 2.5x
-    } else if (effectiveRatio < 0.1) {
-        // Medium element (1-10% of screen)
-        autoScale = 1.5 + (0.1 - effectiveRatio) / 0.09 * 0.5; // 1.5x to 2.0x
-    } else if (effectiveRatio < 0.5) {
-        // Large element (10-50% of screen)
-        autoScale = 1.2 + (0.5 - effectiveRatio) / 0.4 * 0.3; // 1.2x to 1.5x
+    if (precomputedScale && precomputedScale > 0) {
+        // Backend has already calculated the optimal scale
+        autoScale = precomputedScale;
     } else {
-        // Very large element (> 50% of screen) - minimal zoom
-        autoScale = 1.15;
-    }
+        // Auto-scale formula based on effective ratio
+        // INCREASED ZOOM SCALES for more dramatic effect
+        // Small elements (< 1% effective) -> high zoom (2.0x - 2.5x)
+        // Medium elements (1-10% effective) -> medium zoom (1.5x - 2.0x)
+        // Large elements (> 10% effective) -> moderate zoom (1.2x - 1.5x)
+        if (effectiveRatio < 0.01) {
+            // Very small element (< 1% of screen)
+            autoScale = 2.0 + (0.01 - effectiveRatio) / 0.01 * 0.5; // 2.0x to 2.5x
+        } else if (effectiveRatio < 0.1) {
+            // Medium element (1-10% of screen)
+            autoScale = 1.5 + (0.1 - effectiveRatio) / 0.09 * 0.5; // 1.5x to 2.0x
+        } else if (effectiveRatio < 0.5) {
+            // Large element (10-50% of screen)
+            autoScale = 1.2 + (0.5 - effectiveRatio) / 0.4 * 0.3; // 1.2x to 1.5x
+        } else {
+            // Very large element (> 50% of screen) - minimal zoom
+            autoScale = 1.15;
+        }
 
-    // Clamp to reasonable range (increased max)
-    autoScale = Math.max(1.15, Math.min(3.0, autoScale));
+        // Clamp to reasonable range (increased max)
+        autoScale = Math.max(1.15, Math.min(3.0, autoScale));
+    }
 
     // Time behavior: explicit start and end scales for smooth animation
     const startScale = 1.0;      // Always start from normal size
@@ -89,7 +96,9 @@ export function normalizeCoordinates(bounds, recordingWidth, recordingHeight, vi
         widthRatio,
         heightRatio,
         dominantRatio,
-        effectiveRatio
+        effectiveRatio,
+        // Flag to indicate if scale was from backend
+        scaleFromBackend: !!(precomputedScale && precomputedScale > 0)
     };
 }
 

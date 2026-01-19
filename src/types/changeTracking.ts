@@ -10,6 +10,8 @@ export type ChangeType =
   | 'borderRadius'
   | 'effect'
   | 'text'
+  | 'textElementDuration'
+  | 'textElementDelete'
   | 'narration'
   | 'aspectRatio'
   | 'clip';

@@ -1,10 +1,18 @@
 import React, { useState, useMemo } from 'react';
-import { Palette, Plus, RectangleHorizontal, Search, Type } from 'lucide-react';
+import { Palette, Plus, RectangleHorizontal, Search, Type, MoreHorizontal } from 'lucide-react';
 import { BackgroundPanel } from './BackgroundPanel';
 import { AspectRatioDropdown, AspectRatio } from './AspectRatioDropdown';
 import { VideoEditToolbar } from './VideoEditToolbar';
+import { TextEditToolbar } from './TextEditToolbar';
+import { ResizableTextBlock } from './ResizableTextBlock';
 
 export type { AspectRatio };
+
+interface SelectedTextInfo {
+    clipName: string;
+    elementIndex: number;
+    element: any;
+}
 
 interface MainCanvasSectionProps {
     children: React.ReactNode;
@@ -16,11 +24,13 @@ interface MainCanvasSectionProps {
     videoWidth?: number;
     videoHeight?: number;
     isGeneratingSpeech?: boolean;
-    isVideoSelected?: boolean; // NEW: Track if video is selected
+    isVideoSelected?: boolean; // Track if video is selected
+    isTextSelected?: boolean; // Track if text is selected
+    selectedTextElement?: SelectedTextInfo | null; // Currently selected text element
     // Timeline data
     timeline?: any[];
-    displayElements?: any[]; // Renamed from displayEffects and typed broadly for now
-    displayEffects?: any[]; // Keeping for backward compat if needed, but we rely on displayElements
+    displayElements?: any[];
+    displayEffects?: any[];
     narrations?: any[];
     intro?: string;
     outro?: string;
@@ -28,8 +38,23 @@ interface MainCanvasSectionProps {
     currentTime?: number;
     isPlaying?: boolean;
     onSeek?: (time: number) => void;
-    activeClip?: any; // Active timeline clip for border radius
-    onBorderRadiusChange?: (value: number) => void; // Handler for border radius changes
+    activeClip?: any;
+    onBorderRadiusChange?: (value: number) => void;
+    // Text element handlers
+    onTextElementResize?: (clipName: string, elementIndex: number, newStart: number, newEnd: number) => void;
+    onTextElementDelete?: (clipName: string, elementIndex: number) => void;
+    // Text editing handlers
+    onTextFontFamilyChange?: (value: string) => void;
+    onTextFontSizeChange?: (value: number) => void;
+    onTextFontWeightChange?: (value: string) => void;
+    onTextColorChange?: (color: string) => void;
+    onTextBoldToggle?: () => void;
+    onTextItalicToggle?: () => void;
+    onTextUnderlineToggle?: () => void;
+    onTextAlignChange?: (align: 'left' | 'center' | 'right') => void;
+    onTextDelete?: () => void;
+    // Text selection from timeline
+    onTextBlockClick?: (clipName: string, elementIndex: number, element: any) => void;
 }
 
 const aspectRatioValues: Record<string, string> = {
@@ -50,9 +75,15 @@ interface VisualItem {
     start: number;
     end: number;
     label: string;
+    content?: string; // Actual text content for text elements
     color: string;
     icon: React.ReactNode;
     row: number;
+    // Additional properties for text elements (resizable)
+    clipName?: string;
+    clipStart?: number;
+    clipEnd?: number;
+    elementIndex?: number;
 }
 
 export const MainCanvasSection: React.FC<MainCanvasSectionProps> = ({
@@ -65,10 +96,12 @@ export const MainCanvasSection: React.FC<MainCanvasSectionProps> = ({
     videoWidth,
     videoHeight,
     isGeneratingSpeech = false,
-    isVideoSelected = false, // NEW: Default to false
+    isVideoSelected = false,
+    isTextSelected = false,
+    selectedTextElement = null,
     timeline = [],
     displayElements = [],
-    displayEffects = [], // ignored in favor of displayElements
+    displayEffects = [],
     narrations = [],
     intro,
     outro,
@@ -77,7 +110,20 @@ export const MainCanvasSection: React.FC<MainCanvasSectionProps> = ({
     isPlaying = false,
     onSeek,
     activeClip,
-    onBorderRadiusChange
+    onBorderRadiusChange,
+    onTextElementResize,
+    onTextElementDelete,
+    // Text editing handlers
+    onTextFontFamilyChange,
+    onTextFontSizeChange,
+    onTextFontWeightChange,
+    onTextColorChange,
+    onTextBoldToggle,
+    onTextItalicToggle,
+    onTextUnderlineToggle,
+    onTextAlignChange,
+    onTextDelete,
+    onTextBlockClick,
 }) => {
     const [isBackgroundPanelOpen, setIsBackgroundPanelOpen] = useState(false);
     const [zoomLevel, setZoomLevel] = useState(50); // 50% on the 0-100% scale (default like Clueso)
@@ -209,10 +255,16 @@ export const MainCanvasSection: React.FC<MainCanvasSectionProps> = ({
                         type: element.type === 'text' ? 'text' : 'other',
                         start: element.start,
                         end: element.end,
-                        label: 'Text box', // As per Clueso style
+                        label: element.content || 'Text box', // Use actual content
+                        content: element.content || 'Text box', // Store content separately too
                         color: '#EA580C', // Orange for Text
                         icon: <Type size={10} className="text-white" />,
-                        row: 0 // Will be assigned below
+                        row: 0, // Will be assigned below
+                        // Additional info for resizable text blocks
+                        clipName: clipName,
+                        clipStart: clipData.clipStart,
+                        clipEnd: clipData.clipEnd,
+                        elementIndex: elIdx
                     });
                 });
             }
@@ -268,8 +320,28 @@ export const MainCanvasSection: React.FC<MainCanvasSectionProps> = ({
             {/* Canvas Controls Toolbar - Above the canvas */}
             <div className="h-8 flex items-center justify-center border-b border-[#2a2a3e]/50 bg-[#1e1e2e] flex-shrink-0">
                 <div className="flex items-center gap-1.5">
-                    {/* Show VideoEditToolbar when video is selected */}
-                    {isVideoSelected ? (
+                    {/* Show TextEditToolbar when text is selected */}
+                    {isTextSelected && selectedTextElement ? (
+                        <TextEditToolbar
+                            fontFamily={selectedTextElement.element?.style?.fontFamily || 'Oswald'}
+                            fontSize={selectedTextElement.element?.style?.fontSize || 129}
+                            fontWeight={selectedTextElement.element?.style?.fontWeight || 'Light'}
+                            textColor={selectedTextElement.element?.style?.color || '#FFFFFF'}
+                            onFontFamilyChange={onTextFontFamilyChange || (() => {})}
+                            onFontSizeChange={onTextFontSizeChange || (() => {})}
+                            onFontWeightChange={onTextFontWeightChange || (() => {})}
+                            onColorChange={onTextColorChange || (() => {})}
+                            onBoldToggle={onTextBoldToggle || (() => {})}
+                            onItalicToggle={onTextItalicToggle || (() => {})}
+                            onUnderlineToggle={onTextUnderlineToggle || (() => {})}
+                            onAlignChange={onTextAlignChange || (() => {})}
+                            onDelete={onTextDelete || (() => {})}
+                            isBold={selectedTextElement.element?.style?.fontWeight === 'Bold'}
+                            isItalic={selectedTextElement.element?.style?.italic || false}
+                            isUnderline={selectedTextElement.element?.style?.underline || false}
+                            textAlign={selectedTextElement.element?.style?.textAlign || 'center'}
+                        />
+                    ) : isVideoSelected ? (
                         <VideoEditToolbar
                             roundingValue={roundingValue}
                             onRoundingChange={(value) => {
@@ -516,45 +588,84 @@ export const MainCanvasSection: React.FC<MainCanvasSectionProps> = ({
                                     >
                                         {/* Visual items layer - fills the area, items positioned from bottom */}
                                         <div 
-                                            className="absolute inset-0 pointer-events-none"
+                                            className="absolute inset-0"
+                                            style={{ pointerEvents: 'none' }}
                                         >
                                                 {/* Render Visual Items (Upper Layers) */}
-                                                {console.log('[Timeline Render] Rendering visualItems:', visualItems.length)}
                                                 {visualItems.length === 0 && (
                                                     <div className="absolute inset-0 flex items-center justify-center text-gray-500 text-[10px]">
                                                         Effects & elements will appear here
                                                     </div>
                                                 )}
                                                 {visualItems.map((item) => {
+                                                    // For text elements, use the ResizableTextBlock component
+                                                    if (item.type === 'text' && item.clipName !== undefined && item.elementIndex !== undefined) {
+                                                        // Check if this text block is selected
+                                                        const isThisSelected = selectedTextElement?.clipName === item.clipName && 
+                                                                               selectedTextElement?.elementIndex === item.elementIndex;
+                                                        return (
+                                                            <ResizableTextBlock
+                                                                key={item.id}
+                                                                id={item.id}
+                                                                clipName={item.clipName}
+                                                                elementIndex={item.elementIndex}
+                                                                start={item.start}
+                                                                end={item.end}
+                                                                label={item.label}
+                                                                color={item.color}
+                                                                clipStart={item.clipStart ?? 0}
+                                                                clipEnd={item.clipEnd ?? videoDuration}
+                                                                pixelsPerSecond={pixelsPerSecond}
+                                                                row={item.row}
+                                                                isExternallySelected={isThisSelected}
+                                                                onResize={onTextElementResize || (() => {})}
+                                                                onDelete={onTextElementDelete || (() => {})}
+                                                                onClick={(clipName, elementIndex) => {
+                                                                    // Find the element data from displayElements
+                                                                    const clip = displayElements.find((c: any) => c.clipName === clipName);
+                                                                    const element = clip?.elements?.[elementIndex];
+                                                                    if (element && onTextBlockClick) {
+                                                                        onTextBlockClick(clipName, elementIndex, element);
+                                                                    }
+                                                                }}
+                                                            />
+                                                        );
+                                                    }
+
+                                                    // For other items (zoom effects), use same styling as text blocks
                                                     const duration = Math.abs(item.end - item.start);
                                                     const left = item.start * pixelsPerSecond;
-                                                    const width = Math.max(duration * pixelsPerSecond, 10);
+                                                    const width = Math.max(duration * pixelsPerSecond, 30);
                                                     
                                                     // Calculate bottom position based on row index
-                                                    // Each row is 16px high, positioned from bottom
-                                                    const bottom = item.row * 16 + 2; 
+                                                    // Each row is 24px high (same as text blocks)
+                                                    const bottom = item.row * 24 + 6; 
 
                                                     return (
                                                         <div
                                                             key={item.id}
-                                                            className="absolute h-4 rounded px-1.5 flex items-center gap-1 shadow-sm cursor-pointer hover:brightness-110 transition-all pointer-events-auto"
+                                                            className="absolute rounded flex items-center gap-1.5 shadow-sm cursor-pointer hover:brightness-110 transition-all pointer-events-auto"
                                                             style={{
                                                                 left: `${left}px`,
                                                                 width: `${width}px`,
                                                                 bottom: `${bottom}px`,
+                                                                height: '20px',
                                                                 backgroundColor: item.color,
-                                                                zIndex: 10 + item.row
+                                                                zIndex: 10 + item.row,
+                                                                border: '1px solid rgba(255,255,255,0.3)',
+                                                                paddingLeft: '8px',
+                                                                paddingRight: '8px',
                                                             }}
                                                             title={`${item.label} (${item.start.toFixed(1)}s - ${item.end.toFixed(1)}s)`}
                                                         >
                                                             {item.icon}
-                                                            <span className="text-[9px] font-medium text-white truncate w-full">
+                                                            <span className="text-[10px] font-semibold text-white truncate">
                                                                 {item.label}
                                                             </span>
-                                                            
-                                                            {/* Simple resize handles - purely visual for now */}
-                                                            <div className="absolute left-0 top-0 bottom-0 w-0.5 cursor-ew-resize hover:bg-white/20"></div>
-                                                            <div className="absolute right-0 top-0 bottom-0 w-0.5 cursor-ew-resize hover:bg-white/20"></div>
+                                                            {/* Three dots menu for zoom effects */}
+                                                            <div className="ml-auto flex-shrink-0">
+                                                                <MoreHorizontal size={14} className="text-white/70" />
+                                                            </div>
                                                         </div>
                                                     );
                                                 })}

@@ -25,6 +25,12 @@ interface TextElement {
     style: any;
 }
 
+interface SelectedTextInfo {
+    clipName: string;
+    elementIndex: number;
+    element: TextElement;
+}
+
 interface VideoLayerProps {
     videoUrl: string | null;
     videoRef: React.RefObject<HTMLVideoElement>;
@@ -36,8 +42,15 @@ interface VideoLayerProps {
     recordingHeight?: number;
     onVideoClick?: () => void;
     hasMedia?: boolean;
-    borderRadius?: number; // Border radius value (0-20%)
-    isVideoSelected?: boolean; // Whether video is selected
+    borderRadius?: number;
+    isVideoSelected?: boolean;
+    // Text selection props
+    selectedTextElement?: SelectedTextInfo | null;
+    onTextSelect?: (clipName: string, elementIndex: number, element: TextElement) => void;
+    onTextDeselect?: () => void;
+    onTextMove?: (clipName: string, elementIndex: number, newX: number, newY: number) => void;
+    onTextResize?: (clipName: string, elementIndex: number, newWidth: number, newHeight: number, resizeType?: 'horizontal' | 'diagonal') => void;
+    displayElements?: any[];
 }
 
 /**
@@ -55,8 +68,15 @@ export const VideoLayer: React.FC<VideoLayerProps> = ({
     recordingHeight = 1080,
     onVideoClick,
     hasMedia = true,
-    borderRadius = 3, // Default to 3% for subtle rounding
-    isVideoSelected = false
+    borderRadius = 3,
+    isVideoSelected = false,
+    // Text selection props
+    selectedTextElement,
+    onTextSelect,
+    onTextDeselect,
+    onTextMove,
+    onTextResize,
+    displayElements = [],
 }) => {
     console.log('[VideoLayer] borderRadius:', borderRadius, 'isVideoSelected:', isVideoSelected);
     
@@ -192,6 +212,12 @@ export const VideoLayer: React.FC<VideoLayerProps> = ({
                 currentTime={currentTime}
                 recordingWidth={recordingWidth}
                 recordingHeight={recordingHeight}
+                selectedTextElement={selectedTextElement}
+                onTextSelect={onTextSelect}
+                onTextDeselect={onTextDeselect}
+                onTextMove={onTextMove}
+                onTextResize={onTextResize}
+                displayElements={displayElements}
             />
             
             {/* Video Selection Border - Shows when video is selected (always sharp corners) */}
@@ -302,6 +328,7 @@ export const VideoControls: React.FC<VideoControlsProps> = ({
                 <button
                     onClick={onPlayPause}
                     disabled={disabled}
+                    data-play-pause="true"
                     className={`w-7 h-7 flex items-center justify-center text-white rounded-full transition-all duration-200 shadow-lg ${disabled
                         ? 'bg-[#ec4899]/50 cursor-not-allowed opacity-50'
                         : 'bg-[#ec4899] hover:bg-[#db2777]'
