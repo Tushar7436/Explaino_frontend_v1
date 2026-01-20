@@ -3,6 +3,7 @@ import { SideNavigationSection } from "./sections/SideNavigationSection";
 import { VideoLibrarySection } from "./sections/VideoLibrarySection";
 import { HomeSection } from "./sections/HomeSection/HomeSection";
 import { SettingsSection } from "./sections/SettingsSection/SettingsSection";
+import { ComingSoonSection } from "./sections/ComingSoonSection/ComingSoonSection";
 
 export const MericodSaasRecord = (): JSX.Element => {
   const [active, setActive] = useState<string>("Home");
@@ -24,10 +25,13 @@ export const MericodSaasRecord = (): JSX.Element => {
         {/* Content area with dynamic left margin to account for fixed sidebar width */}
         <div className={`flex-1 transition-all duration-300 ${isCollapsed ? 'ml-[80px]' : 'ml-[268px]'}`}>
           {active === "Home" && <HomeSection />}
-          {active === "My Library" && <VideoLibrarySection />}
+          {(active === "My Library" || active === "All Projects") && <VideoLibrarySection />}
           {active === "Settings" && <SettingsSection />}
-          {/* fallback to library for other tabs like 'All Projects', 'Video Templates', etc */}
-          {active !== "Home" && active !== "My Library" && active !== "Settings" && <VideoLibrarySection />}
+
+          {/* Coming Soon Pages */}
+          {(active === "Video Templates" || active === "Auto-update" || active === "Team" || active === "Analytics") && (
+            <ComingSoonSection pageName={active} />
+          )}
         </div>
       </div>
     </div>

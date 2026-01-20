@@ -168,6 +168,9 @@ export async function exportVideo(sessionId, instructions, recordingDimensions, 
         // Canvas/background settings for the "video on stage" effect
         backgroundColor: options.backgroundColor || '#1a1625',
         aspectRatio: options.aspectRatio || '16:9',
+        // Intro and Outro details
+        intro: options.intro ? { ...options.intro, ...splitTextToLines(options.intro.text) } : null,
+        outro: options.outro ? { ...options.outro, ...splitTextToLines(options.outro.text) } : null,
         // Output resolution for FFmpeg rendering (1080p)
         outputResolution: {
             width: 1920,
@@ -287,7 +290,7 @@ export function getWebSocketUrl(sessionId) {
 export async function updateInstructions(sessionId, instructions, changeStack = []) {
     const payload = {
         instructions,
-        changeSummary: changeStack.length > 0 
+        changeSummary: changeStack.length > 0
             ? `${changeStack.length} changes: ${changeStack.map(c => c.type).join(', ')}`
             : undefined
     };
@@ -329,4 +332,31 @@ export async function checkHealth() {
         throw new Error(`HTTP ${response.status}`);
     }
     return response.json();
+}
+
+/**
+ * Helper to split text into two lines for better visual balance
+ * Use this for intro/outro text that might be too long for a single line
+ * @param {string} text - Text to split
+ * @returns {Object} Object with line1 and line2
+ */
+function splitTextToLines(text) {
+    if (!text) return { line1: '', line2: '' };
+
+    // If text is short, keep on one line (threshold: 30 chars)
+    if (text.length <= 25) {
+        return { line1: text, line2: '' };
+    }
+
+    const words = text.split(' ');
+    // If single word, can't split
+    if (words.length <= 1) return { line1: text, line2: '' };
+
+    // Find split point close to visual center
+    const midIndex = Math.ceil(words.length / 2);
+
+    return {
+        line1: words.slice(0, midIndex).join(' '),
+        line2: words.slice(midIndex).join(' ')
+    };
 }

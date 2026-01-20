@@ -1,345 +1,111 @@
-import {
-  ChevronDownIcon,
-  EyeIcon,
-  MessageSquareIcon,
-  PlusIcon,
-  SearchIcon,
-  SmileIcon,
-} from "lucide-react";
-import React, { useState } from "react";
+import { Folder, Home, Plus } from "lucide-react";
 import { Avatar, AvatarFallback } from "../../../../components/ui/avatar";
-import { Badge } from "../../../../components/ui/badge";
 import { Button } from "../../../../components/ui/button";
-import { Card, CardContent } from "../../../../components/ui/card";
-import { Input } from "../../../../components/ui/input";
-import { Separator } from "../../../../components/ui/separator";
 
-const tabItems = [
-  { id: "videos", label: "Videos", active: true },
-  { id: "starred", label: "Starred Videos", active: false },
-  { id: "screenshot", label: "Screnshoot", active: false },
-  { id: "archived", label: "Archived", active: false },
-];
-
-const folderData = [
+const projects = [
   {
     id: 1,
-    title: "Marchelina Client Meeting Record",
-    videoCount: 4,
-    vectorSrc: "/vector-3.svg",
+    title: "Deploying Projects Using Vercel",
+    updated: "21 Dec 2025",
+    created: "2 Dec 2025",
   },
   {
     id: 2,
-    title: "Drakula - New Page Brief Meeting",
-    videoCount: 2,
-    vectorSrc: "/vector-3-1.svg",
+    title: "Vercel Project Deployment Tool",
+    updated: "13 Jan 2026",
+    created: "21 Dec 2025",
   },
   {
     id: 3,
-    title: "Michael - New Project Brief Meeting",
-    videoCount: 3,
-    vectorSrc: "/vector-3-2.svg",
-  },
-];
-
-const videoData = [
-  {
-    id: 1,
-    timeAgo: "12 min ago",
-    title: "Samaran - Homepage Report",
-    duration: "4 Min",
-    views: 6,
-    comments: 6,
-    reactions: 4,
-    starred: false,
-  },
-  {
-    id: 2,
-    timeAgo: "1 hours ago",
-    title: "Drakula - Shopping Report",
-    duration: "2 Min",
-    views: 2,
-    comments: 1,
-    reactions: 1,
-    starred: true,
-  },
-  {
-    id: 3,
-    timeAgo: "2 hours ago",
-    title: "Marchelina - Detail Report",
-    duration: "3 Min",
-    views: 6,
-    comments: 2,
-    reactions: 4,
-    starred: true,
-  },
-  {
-    id: 4,
-    timeAgo: "2 hours ago",
-    title: "New Project Brief Explanation",
-    duration: "2 Min",
-    views: 3,
-    comments: 0,
-    reactions: 0,
-    starred: true,
-  },
-  {
-    id: 5,
-    timeAgo: "12 min ago",
-    title: "Samaran - Homepage Report",
-    duration: "3 Min",
-    views: 4,
-    comments: 4,
-    reactions: 4,
-    starred: false,
-  },
-  {
-    id: 6,
-    timeAgo: "12 min ago",
-    title: "Samaran - Homepage Report",
-    duration: "1 Min",
-    views: 4,
-    comments: 4,
-    reactions: 4,
-    starred: false,
-  },
-  {
-    id: 7,
-    timeAgo: "12 min ago",
-    title: "Samaran - Homepage Report",
-    duration: "5 Min",
-    views: 4,
-    comments: 4,
-    reactions: 4,
-    starred: false,
-  },
-  {
-    id: 8,
-    timeAgo: "12 min ago",
-    title: "Samaran - Homepage Report",
-    duration: "4 Min",
-    views: 4,
-    comments: 4,
-    reactions: 4,
-    starred: false,
+    title: "GitHub Project Overview",
+    updated: "2 Jan 2026",
+    created: "22 Dec 2025",
   },
 ];
 
 export const VideoLibrarySection = (): JSX.Element => {
-  const [activeTab, setActiveTab] = useState("videos");
-
   return (
-    <div className="flex flex-col w-full items-start gap-10 px-4 py-6">
-      <div className="flex flex-col items-start gap-11 w-full">
-        <header className="flex items-center justify-between w-full">
-          <h1 className="[font-family:'Inter',Helvetica] font-semibold text-[#131920] text-[28px] tracking-[0] leading-[normal]">
-            My Library
-          </h1>
+    <div className="flex flex-col w-full min-h-screen bg-[#0B0C15] text-white p-10 font-[Inter]">
+      {/* Header */}
+      <div className="flex flex-col gap-8 w-full mb-12">
+        <div className="flex items-center gap-2 text-gray-400 hover:text-white cursor-pointer transition-colors w-fit">
+          <Home size={20} />
+        </div>
 
-          <div className="flex items-center justify-end gap-6 flex-1 ml-6">
-            <div className="flex items-center gap-2.5 px-5 py-3.5 flex-1 max-w-[494px] rounded-[100px] border-[1.5px] border-solid border-[#f0f0f3]">
-              <SearchIcon className="w-5 h-5 text-[#1319204c]" />
-              <Input
-                type="text"
-                placeholder="SearchIcon your videos, folder, report, tags, idea"
-                className="border-0 p-0 h-auto [font-family:'Inter',Helvetica] font-medium text-[#1319204c] text-base focus-visible:ring-0 focus-visible:ring-offset-0"
-              />
-            </div>
+        <h1 className="text-3xl font-bold tracking-tight text-white">Projects</h1>
 
-            <div className="inline-flex items-center gap-2.5">
-              <img
-                className="flex-[0_0_auto]"
-                alt="Profile"
-                src="/profile.svg"
-              />
+        <div className="flex items-center gap-4 mt-2">
+          <Button className="bg-[#EC4899] hover:bg-[#DB2777] text-white gap-2 px-6 h-12 rounded-lg font-semibold shadow-lg shadow-pink-500/20 transition-all text-base">
+            <Plus size={20} />
+            New Video
+          </Button>
 
-              <img className="w-px h-[25px]" alt="Vector" src="/vector-2.svg" />
-
-              <button className="inline-flex items-center gap-4 rounded-[100px] overflow-hidden">
-                <div className="inline-flex items-center gap-2">
-                  <Avatar className="w-11 h-11">
-                    <AvatarFallback className="bg-[#d9d9d9]" />
-                  </Avatar>
-
-                  <span className="[font-family:'Inter',Helvetica] font-semibold text-[#333333] text-base tracking-[0] leading-[normal] whitespace-nowrap">
-                    Hancraft
-                  </span>
-                </div>
-
-                <ChevronDownIcon className="w-4 h-4" />
-              </button>
-            </div>
-          </div>
-        </header>
-
-        <nav className="flex items-center justify-between w-full">
-          <div className="inline-flex items-start gap-2">
-            {tabItems.map((tab) => (
-              <Button
-                key={tab.id}
-                variant={tab.active ? "default" : "outline"}
-                className={`h-12 px-5 py-3.5 rounded-[100px] ${
-                  tab.active
-                    ? "bg-[#7433ff] text-white hover:bg-[#7433ff]/90"
-                    : "bg-neutral-50 border-[1.5px] border-[#f0f0f3] text-[#13192080] hover:bg-neutral-100"
-                } [font-family:'Inter',Helvetica] font-semibold text-base`}
-                onClick={() => setActiveTab(tab.id)}
-              >
-                {tab.label}
-              </Button>
-            ))}
-          </div>
-
-          <div className="inline-flex items-start gap-3">
-            <img
-              className="flex-[0_0_auto]"
-              alt="Frame"
-              src="/frame-26-1.svg"
-            />
-
-            <Button
-              variant="outline"
-              className="inline-flex items-center justify-center gap-2 pl-5 pr-4 py-3.5 bg-white rounded-[100px] border-[1.5px] border-[#0000001a] hover:bg-gray-50"
-            >
-              <span className="[font-family:'Inter',Helvetica] font-semibold text-[#131920] text-base tracking-[0] leading-[normal] whitespace-nowrap">
-                New Folder
-              </span>
-              <PlusIcon className="w-5 h-5" />
-            </Button>
-          </div>
-        </nav>
+          <Button
+            variant="outline"
+            className="bg-transparent border-[#2A2B35] text-gray-300 hover:bg-[#2A2B35] hover:text-white gap-2 px-6 h-12 rounded-lg font-semibold text-base"
+          >
+            <Folder size={20} />
+            New Folder
+          </Button>
+        </div>
       </div>
 
-      <div className="inline-flex flex-col items-start gap-7 w-full">
-        <section className="flex flex-col items-start gap-6 w-full">
-          <div className="flex items-center w-full">
-            <Badge
-              variant="secondary"
-              className="inline-flex items-center justify-center gap-2.5 px-3 py-1.5 bg-[#f6f6f8] rounded-xl border border-solid border-[#0000000f] [font-family:'Inter',Helvetica] font-semibold text-[#13192080] text-base"
-            >
-              Folder
-            </Badge>
+      {/* Projects List */}
+      <div className="w-full">
+        <h2 className="text-gray-400 font-semibold mb-6 text-sm">Projects</h2>
 
-            <Separator className="flex-1 mx-4" />
-
-            <div className="inline-flex items-center justify-center gap-2.5 px-3 py-2 rounded-[100px]">
-              <span className="[font-family:'Inter',Helvetica] font-semibold text-[#13192080] text-sm tracking-[0] leading-[normal]">
-                3 Folders
-              </span>
-            </div>
+        <div className="w-full border border-[#2A2B35] rounded-xl overflow-hidden bg-[#12131C]">
+          {/* Table Header */}
+          <div className="grid grid-cols-12 gap-4 p-5 border-b border-[#2A2B35] text-sm text-gray-400 font-medium">
+            <div className="col-span-5 pl-4">Project</div>
+            <div className="col-span-3">Creator</div>
+            <div className="col-span-1">Updated</div>
+            <div className="col-span-1">Created</div>
+            <div className="col-span-2 pl-4">Help Center</div>
           </div>
 
-          <div className="flex items-start gap-5 w-full">
-            {folderData.map((folder) => (
+          {/* Table Body */}
+          <div className="flex flex-col">
+            {projects.map((project) => (
               <div
-                key={folder.id}
-                className="flex-col items-start gap-1 flex-1 inline-flex relative cursor-pointer hover:opacity-80 transition-opacity"
+                key={project.id}
+                className="grid grid-cols-12 gap-4 p-5 border-b border-[#2A2B35] last:border-0 items-center hover:bg-[#1C1D26] transition-colors group cursor-pointer"
               >
-                <img
-                  className="w-[85.48px] h-[33px] mt-[-2.50px] ml-[-6.50px]"
-                  alt="Vector"
-                  src={folder.vectorSrc}
-                />
+                {/* Project Name */}
+                <div className="col-span-5 font-semibold text-white pl-4 group-hover:text-[#EC4899] transition-colors">
+                  {project.title}
+                </div>
 
-                <Card className="w-full bg-[#f9f9fa] rounded-[0px_14px_14px_14px] border border-solid border-[#dddde3] shadow-[0px_2px_12px_#0000000a]">
-                  <CardContent className="flex flex-col items-start gap-3 p-5">
-                    <h3 className="[font-family:'Inter',Helvetica] font-semibold text-[#131920] text-base tracking-[0] leading-[normal]">
-                      {folder.title}
-                    </h3>
+                {/* Creator */}
+                <div className="col-span-3 flex items-center gap-3">
+                  <Avatar className="h-9 w-9 border-2 border-[#0B0C15]">
+                    <AvatarFallback className="bg-[#14b8a6] text-white font-medium text-sm">T</AvatarFallback>
+                  </Avatar>
+                  <div className="flex flex-col">
+                    <span className="text-sm font-medium text-white leading-tight">Tushar Agarwal</span>
+                    <span className="text-xs text-gray-500 mt-0.5">tushar7436@gmail.com</span>
+                  </div>
+                </div>
 
-                    <p className="[font-family:'Inter',Helvetica] font-semibold text-[#13192080] text-sm tracking-[0] leading-[normal]">
-                      {folder.videoCount} Video
-                    </p>
-                  </CardContent>
-                </Card>
+                {/* Dates */}
+                <div className="col-span-1 text-sm text-gray-400 font-medium">
+                  {project.updated}
+                </div>
+                <div className="col-span-1 text-sm text-gray-400 font-medium">
+                  {project.created}
+                </div>
 
-                <div className="absolute top-[5px] left-[5px] w-2.5 h-2.5 bg-white rounded-[5px] border border-solid border-[#e2e2e8]" />
-                <div className="absolute top-[5px] left-[19px] w-2.5 h-2.5 bg-white rounded-[5px] border border-solid border-[#e2e2e8]" />
+                {/* Status Badge */}
+                <div className="col-span-2 pl-4">
+                  <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-[#1C1D26] border border-[#2A2B35]">
+                    <div className="w-2 h-2 rounded-full bg-gray-500" />
+                    <span className="text-xs font-medium text-gray-300">Unpublished</span>
+                  </div>
+                </div>
               </div>
             ))}
           </div>
-        </section>
-
-        <section className="flex flex-col items-start gap-6 w-full">
-          <div className="flex items-center w-full">
-            <Badge
-              variant="secondary"
-              className="inline-flex items-center justify-center gap-2.5 px-3 py-1.5 bg-[#f6f6f8] rounded-xl border border-solid border-[#0000000f] [font-family:'Inter',Helvetica] font-semibold text-[#13192080] text-base whitespace-nowrap"
-            >
-              All Videos
-            </Badge>
-
-            <Separator className="flex-1 mx-4" />
-
-            <div className="inline-flex items-center justify-center gap-2.5 px-3 py-2 rounded-[100px]">
-              <span className="[font-family:'Inter',Helvetica] font-semibold text-[#13192080] text-sm tracking-[0] leading-[normal]">
-                12 Videos
-              </span>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-4 gap-5 w-full">
-            {videoData.map((video) => (
-              <Card
-                key={video.id}
-                className="flex flex-col items-start gap-4 bg-white rounded-2xl overflow-hidden border border-solid border-[#e5e5e6] hover:shadow-lg transition-shadow cursor-pointer"
-              >
-                <div className="relative w-full h-[162px] bg-[#0000001a] rounded-[12px_12px_0px_0px]">
-                  <Avatar className="absolute top-2.5 left-2.5 w-11 h-11 border-2 border-solid border-white">
-                    <AvatarFallback className="bg-[#f1f1f1]" />
-                  </Avatar>
-
-                  <Badge className="absolute top-[129px] right-2.5 bg-white text-[#131920] hover:bg-white [font-family:'Inter',Helvetica] font-medium text-xs px-2.5 py-[5px]">
-                    {video.duration}
-                  </Badge>
-
-                  {video.starred && (
-                    <img
-                      className="absolute top-2 right-2 w-7 h-7"
-                      alt="Frame"
-                      src={`/frame-39${video.id === 2 ? "" : video.id === 3 ? "-2" : video.id === 4 ? "-1" : ""}.svg`}
-                    />
-                  )}
-                </div>
-
-                <CardContent className="flex flex-col items-start gap-5 pt-0 pb-4 px-3.5 w-full">
-                  <div className="flex flex-col items-start gap-1.5 w-full">
-                    <p className="[font-family:'Inter',Helvetica] font-semibold text-[#13192080] text-sm tracking-[0] leading-[normal]">
-                      {video.timeAgo}
-                    </p>
-
-                    <h3 className="[font-family:'Inter',Helvetica] font-semibold text-[#131920] text-base tracking-[0] leading-[normal]">
-                      {video.title}
-                    </h3>
-                  </div>
-
-                  <div className="flex items-start gap-1 w-full">
-                    <div className="flex items-center justify-center gap-1 pl-2.5 pr-3 py-2 flex-1 bg-[#f6f6f8] rounded-[100px]">
-                      <EyeIcon className="w-4 h-4 text-[#131920b2]" />
-                      <span className="[font-family:'Inter',Helvetica] font-medium text-[#131920b2] text-sm tracking-[0] leading-[normal]">
-                        {video.views}
-                      </span>
-                    </div>
-
-                    <div className="flex items-center justify-center gap-1 pl-2.5 pr-3 py-2 flex-1 bg-[#f6f6f8] rounded-[100px]">
-                      <MessageSquareIcon className="w-4 h-4 text-[#131920b2]" />
-                      <span className="[font-family:'Inter',Helvetica] font-medium text-[#131920b2] text-sm tracking-[0] leading-[normal]">
-                        {video.comments}
-                      </span>
-                    </div>
-
-                    <div className="flex items-center justify-center gap-1 pl-2.5 pr-3 py-2 flex-1 bg-[#f6f6f8] rounded-[100px]">
-                      <SmileIcon className="w-4 h-4 text-[#131920b2]" />
-                      <span className="[font-family:'Inter',Helvetica] font-medium text-[#131920b2] text-sm tracking-[0] leading-[normal]">
-                        {video.reactions}
-                      </span>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-            ))}
-          </div>
-        </section>
+        </div>
       </div>
     </div>
   );

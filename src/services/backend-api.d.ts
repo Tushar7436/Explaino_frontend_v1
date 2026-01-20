@@ -97,6 +97,26 @@ export interface ZoomInstruction {
 export interface ExportOptions {
     backgroundColor?: string;
     aspectRatio?: '16:9' | '9:16' | '1:1' | '4:3' | '3:4' | '4:5' | '5:4' | '1920:1080';
+    intro?: {
+        text: string;
+        backgroundColor?: string;
+        durationMs?: number;
+        line1?: string;
+        line2?: string;
+        hasBorder?: boolean;
+        borderColor?: string;
+        borderWidth?: number;
+    };
+    outro?: {
+        text: string;
+        backgroundColor?: string;
+        durationMs?: number;
+        line1?: string;
+        line2?: string;
+        hasBorder?: boolean;
+        borderColor?: string;
+        borderWidth?: number;
+    };
 }
 
 export interface RewriteScriptResponse {

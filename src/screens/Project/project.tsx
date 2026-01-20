@@ -53,27 +53,27 @@ export const ProjectScreen: React.FC<ProjectScreenProps> = ({ sessionId }) => {
     // ============== COMPONENT MOUNT DEBUG ==============
     console.log('[ProjectScreen] Component mounting/rendering with sessionId:', sessionId);
     console.log('[ProjectScreen] Window location:', window.location.href);
-    
+
     // ============== CDN CONFIGURATION ==============
     const CDN_BASE = 'https://cdn.vocallabs.ai';
     const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:8000';
-    
+
     // Helper to convert S3 paths to CDN URLs
     const formatCdnUrl = (url: string | null | undefined): string | null => {
         if (!url) return null;
-        
+
         // If already a full URL, return as-is
         if (url.startsWith('http://') || url.startsWith('https://')) {
             return url;
         }
-        
+
         // Remove leading slash if present
         const path = url.startsWith('/') ? url.slice(1) : url;
-        
+
         // Return CDN URL
         return `${CDN_BASE}/${path}`;
     };
-    
+
     // ============== UI STATE ==============
     const [activeTab, setActiveTab] = useState<'video' | 'article'>('video');
     const [activeSidebarItem, setActiveSidebarItem] = useState<SidebarMenuItem | null>('script');
@@ -88,7 +88,7 @@ export const ProjectScreen: React.FC<ProjectScreenProps> = ({ sessionId }) => {
     const [duration, setDuration] = useState(0);
     const [volume, setVolume] = useState(1);
     const [isMuted, setIsMuted] = useState(false);
-    
+
     // ============== CLIP-BASED AUDIO ==============
     const [clipAudioUrls, setClipAudioUrls] = useState<{
         intro: string | null;
@@ -97,7 +97,7 @@ export const ProjectScreen: React.FC<ProjectScreenProps> = ({ sessionId }) => {
     }>({ intro: null, video: null, outro: null });
     const [currentClipAudio, setCurrentClipAudio] = useState<string | null>(null);
     const [hasSpeechGenerated, setHasSpeechGenerated] = useState(false);
-    
+
     // Reset audio state when sessionId changes (new session)
     useEffect(() => {
         setHasSpeechGenerated(false);
@@ -114,7 +114,7 @@ export const ProjectScreen: React.FC<ProjectScreenProps> = ({ sessionId }) => {
     const [error, setError] = useState<string | null>(null);
     const [cdnData, setCdnData] = useState<any>(null); // Raw CDN data, hook will merge with localStorage
     const [cacheBustVersion, setCacheBustVersion] = useState<number>(Date.now()); // Force refetch after saves
-    
+
     // ============== CHANGE TRACKING (replaces results state) ==============
     const {
         results,
@@ -127,7 +127,7 @@ export const ProjectScreen: React.FC<ProjectScreenProps> = ({ sessionId }) => {
         lastSavedAt,
         hasUnsavedChanges
     } = useChangeTracking(
-        sessionId || null, 
+        sessionId || null,
         cdnData,
         () => {
             // Trigger refetch with cache-busting after save
@@ -143,10 +143,10 @@ export const ProjectScreen: React.FC<ProjectScreenProps> = ({ sessionId }) => {
 
     // ============== TIMELINE STATE ==============
     const [activeClip, setActiveClip] = useState<TimelineClip | null>(null);
-    
+
     // ============== VIDEO SELECTION STATE ==============
     const [isVideoSelected, setIsVideoSelected] = useState(false);
-    
+
     // ============== TEXT SELECTION STATE ==============
     const [isTextSelected, setIsTextSelected] = useState(false);
     const [selectedTextElement, setSelectedTextElement] = useState<{
@@ -155,10 +155,10 @@ export const ProjectScreen: React.FC<ProjectScreenProps> = ({ sessionId }) => {
         element: any;
     } | null>(null);
     const [isTextEditPanelOpen, setIsTextEditPanelOpen] = useState(false);
-    
+
     // Check if current active clip has media (video/image)
     const currentClipHasMedia = activeClip?.media && activeClip.media.length > 0;
-    
+
     // Compute video visibility based on current clip
     const videoVisible = results?.timeline ? isVideoVisible(results.timeline, currentTime) : true;
 
@@ -169,28 +169,28 @@ export const ProjectScreen: React.FC<ProjectScreenProps> = ({ sessionId }) => {
             console.log('[handleBorderRadiusChange] No active clip or media, returning');
             return;
         }
-        
+
         const oldBorderRadius = activeClip.media[0]?.borderRadius || 0;
         console.log('[handleBorderRadiusChange] Old borderRadius:', oldBorderRadius, '→ New:', value);
-        
+
         // Update the active clip's media borderRadius
         const updatedClip = {
             ...activeClip,
-            media: activeClip.media.map((mediaItem: any, index: number) => 
+            media: activeClip.media.map((mediaItem: any, index: number) =>
                 index === 0 ? { ...mediaItem, borderRadius: value } : mediaItem
             )
         };
-        
+
         console.log('[handleBorderRadiusChange] Updated clip borderRadius:', updatedClip.media[0].borderRadius);
-        
+
         setActiveClip(updatedClip);
-        
+
         // Update in results timeline as well
         if (results?.timeline?.clips) {
-            const updatedClips = results.timeline.clips.map((clip: any) => 
+            const updatedClips = results.timeline.clips.map((clip: any) =>
                 clip.name === activeClip.name ? updatedClip : clip
             );
-            
+
             setResults({
                 ...results,
                 timeline: {
@@ -198,7 +198,7 @@ export const ProjectScreen: React.FC<ProjectScreenProps> = ({ sessionId }) => {
                     clips: updatedClips
                 }
             });
-            
+
             // Track change
             trackChange({
                 type: 'borderRadius',
@@ -359,9 +359,9 @@ export const ProjectScreen: React.FC<ProjectScreenProps> = ({ sessionId }) => {
 
         const handleGlobalClick = (e: MouseEvent) => {
             const target = e.target as HTMLElement;
-            
+
             // Check if clicking on allowed elements
-            const isAllowed = 
+            const isAllowed =
                 target.closest('[data-text-block]') ||
                 target.closest('[data-text-edit-panel]') ||
                 target.closest('[data-sidebar-elements]') ||
@@ -369,7 +369,7 @@ export const ProjectScreen: React.FC<ProjectScreenProps> = ({ sessionId }) => {
                 target.closest('[data-text-overlay]') ||
                 target.closest('[data-text-toolbar]') ||
                 target.closest('[data-color-picker]');
-            
+
             if (!isAllowed) {
                 console.log('[Click Outside] Deselecting text element');
                 handleTextDeselect();
@@ -443,26 +443,26 @@ export const ProjectScreen: React.FC<ProjectScreenProps> = ({ sessionId }) => {
 
         const element = clip.elements[elementIndex];
         const originalFontSize = element.style?.fontSize || 129;
-        
+
         let finalWidth = newWidth;
         let finalHeight = newHeight;
         let finalFontSize = originalFontSize;
-        
+
         if (resizeType === 'horizontal') {
             // Horizontal resize: keep font size, auto-calculate height based on text content
             // The height needs to accommodate the text at the current font size
             // We'll calculate how many lines the text would need at the new width
-            
+
             // Estimate character width (roughly 0.5 * fontSize for most fonts)
             const avgCharWidth = originalFontSize * 0.55;
             const textContent = element.content || '';
             const charsPerLine = Math.max(1, Math.floor(newWidth / avgCharWidth));
-            
+
             // Split text into words and calculate lines needed
             const words = textContent.split(' ');
             let lines = 1;
             let currentLineLength = 0;
-            
+
             for (const word of words) {
                 const wordLength = word.length * avgCharWidth + avgCharWidth; // +1 for space
                 if (currentLineLength + wordLength > newWidth && currentLineLength > 0) {
@@ -472,7 +472,7 @@ export const ProjectScreen: React.FC<ProjectScreenProps> = ({ sessionId }) => {
                     currentLineLength += wordLength;
                 }
             }
-            
+
             // Calculate height based on number of lines (line height ~1.2)
             const lineHeight = originalFontSize * 1.3;
             const padding = originalFontSize * 0.5; // Some padding
@@ -483,11 +483,11 @@ export const ProjectScreen: React.FC<ProjectScreenProps> = ({ sessionId }) => {
             // Diagonal resize: scale font size proportionally
             const originalHeight = element.dimension.height;
             const heightRatio = newHeight / originalHeight;
-            
+
             // Minimum font size is 24px (industry standard minimum for readability)
             const MIN_FONT_SIZE = 24;
             const calculatedFontSize = Math.round(originalFontSize * heightRatio);
-            
+
             if (calculatedFontSize < MIN_FONT_SIZE) {
                 // Hit minimum font size - stop scaling, just adjust dimensions
                 finalFontSize = MIN_FONT_SIZE;
@@ -556,7 +556,7 @@ export const ProjectScreen: React.FC<ProjectScreenProps> = ({ sessionId }) => {
             const oldFontSize = element.style.fontSize;
             const newFontSize = updates.style.fontSize;
             const scale = newFontSize / oldFontSize;
-            
+
             // Scale dimensions proportionally with font size
             dimensionUpdate = {
                 dimension: {
@@ -641,19 +641,19 @@ export const ProjectScreen: React.FC<ProjectScreenProps> = ({ sessionId }) => {
             setIsVideoSelected(false);
         }
     }, [activeClip?.name, currentClipHasMedia]);
-    
+
     // Sync activeClip with merged results (after localStorage merge)
     useEffect(() => {
         if (!results?.timeline || !activeClip) return;
-        
+
         // Find the updated clip from merged results
         const updatedClip = getActiveClip(results.timeline, currentTime);
-        
+
         if (updatedClip && updatedClip.name === activeClip.name) {
             // Check if backgroundColor or other properties changed
             const bgChanged = updatedClip.backgroundColor !== activeClip.backgroundColor;
             const borderRadiusChanged = updatedClip.media?.[0]?.borderRadius !== activeClip.media?.[0]?.borderRadius;
-            
+
             if (bgChanged || borderRadiusChanged) {
                 console.log('[ActiveClip] Syncing with merged results:', {
                     old: { bg: activeClip.backgroundColor, br: activeClip.media?.[0]?.borderRadius },
@@ -663,43 +663,43 @@ export const ProjectScreen: React.FC<ProjectScreenProps> = ({ sessionId }) => {
             }
         }
     }, [results, currentTime]); // Trigger when results change (after merge)
-    
+
     // Update current clip audio when active clip changes
     useEffect(() => {
         if (!activeClip) return;
-        
+
         const clipName = activeClip.name as 'intro' | 'video' | 'outro';
         const audioUrl = clipAudioUrls[clipName];
-        
+
         const audio = aiAudioRef.current;
         if (!audio) return;
-        
+
         // Always update audio when clip changes or URL changes
         const needsUpdate = audioUrl !== currentClipAudio || audio.src !== audioUrl;
-        
+
         if (needsUpdate) {
             console.log(`[Audio] Loading ${clipName} clip audio:`, audioUrl);
-            
+
             // Pause and clear current audio
             audio.pause();
             audio.currentTime = 0;
-            
+
             if (audioUrl) {
                 // Set new audio source
                 audio.src = audioUrl;
                 setCurrentClipAudio(audioUrl);
-                
+
                 // Add error handler
                 audio.onerror = (e) => {
                     console.error(`[Audio] Error loading ${clipName} audio:`, e);
                     console.error('[Audio] Failed URL:', audioUrl);
                     console.error('[Audio] Speech generated:', hasSpeechGenerated);
                 };
-                
+
                 // Add loaded handler
                 audio.onloadeddata = () => {
                     console.log(`[Audio] ${clipName} audio loaded, duration:`, audio.duration, 'ready to play');
-                    
+
                     // If playing, seek to correct time and play
                     if (isPlaying && results?.timeline) {
                         const clipRelativeTime = Math.max(0, currentTime - activeClip.start);
@@ -708,7 +708,7 @@ export const ProjectScreen: React.FC<ProjectScreenProps> = ({ sessionId }) => {
                         console.log(`[Audio] Auto-playing from ${clipRelativeTime}s`);
                     }
                 };
-                
+
                 audio.load();
             } else {
                 console.log(`[Audio] No audio URL for ${clipName} clip`);
@@ -717,7 +717,7 @@ export const ProjectScreen: React.FC<ProjectScreenProps> = ({ sessionId }) => {
             }
         }
     }, [activeClip, clipAudioUrls, currentClipAudio, isPlaying, currentTime, results]);
-    
+
     // Compute background color based on active clip - use clip's backgroundColor if available
     const currentBackgroundColor = (activeClip && activeClip.backgroundColor)
         ? activeClip.backgroundColor
@@ -735,21 +735,21 @@ export const ProjectScreen: React.FC<ProjectScreenProps> = ({ sessionId }) => {
 
     // ============== COMPUTED VALUES ==============
     const narrations: Narration[] = results?.narrations || [];
-    
+
     // Extract clip audio URLs from clip-based narrations structure
     useEffect(() => {
         if (!results?.narrations || !Array.isArray(results.narrations)) return;
-        
+
         const clipNarrations = results.narrations;
-        
+
         const introClip = clipNarrations.find((c: any) => c.clipName === 'intro');
         const videoClip = clipNarrations.find((c: any) => c.clipName === 'video');
         const outroClip = clipNarrations.find((c: any) => c.clipName === 'outro');
-        
+
         // Check if speech has been generated (all clips must have generated audio)
         const speechGenerated = !!(introClip?.generatedAudioUrl && videoClip?.generatedAudioUrl && outroClip?.generatedAudioUrl);
         setHasSpeechGenerated(speechGenerated);
-        
+
         // If speech generated, use generatedAudioUrl for all clips; otherwise use rawAudioUrl per clip
         if (speechGenerated) {
             const urls = {
@@ -771,7 +771,7 @@ export const ProjectScreen: React.FC<ProjectScreenProps> = ({ sessionId }) => {
             console.log('[Audio] Raw audio availability - intro:', !!introClip?.rawAudioUrl, 'video:', !!videoClip?.rawAudioUrl, 'outro:', !!outroClip?.rawAudioUrl);
             console.log('[Audio] Formatted URLs - intro:', urls.intro, 'video:', urls.video, 'outro:', urls.outro);
         }
-        
+
         // Initialize active clip if not set and timeline exists
         if (results?.timeline && !activeClip) {
             const initialClip = getActiveClip(results.timeline, currentTime);
@@ -790,7 +790,7 @@ export const ProjectScreen: React.FC<ProjectScreenProps> = ({ sessionId }) => {
     // Auto-start processing when sessionId is available
     useEffect(() => {
         console.log('[Session] useEffect triggered, sessionId:', sessionId);
-        
+
         if (!sessionId) {
             console.log('[Session] No sessionId, skipping processing');
             setPreparing(false);
@@ -800,24 +800,24 @@ export const ProjectScreen: React.FC<ProjectScreenProps> = ({ sessionId }) => {
         let isCancelled = false;
         let retryCount = 0;
         const maxRetries = 30; // 30 retries = ~60 seconds with exponential backoff
-        
+
         const loadInstructionsFromCDN = async () => {
             const cdnUrl = `${CDN_BASE}/recordings/${sessionId}/session/instructions.json?v=${cacheBustVersion}`;
             const backendUrl = `${API_BASE}/api/session/${sessionId}/instructions?v=${cacheBustVersion}`;
-            
+
             const attemptFetch = async (): Promise<boolean> => {
                 if (isCancelled) return false;
-                
+
                 try {
                     console.log(`[Session] Attempt ${retryCount + 1}/${maxRetries}: Fetching instructions.json`);
-                    
+
                     let response: Response | undefined;
                     let sessionData: any;
-                    
+
                     // Try CDN first with aggressive cache-busting headers
                     try {
                         console.log('[Session] Trying CDN:', cdnUrl);
-                        response = await fetch(cdnUrl, { 
+                        response = await fetch(cdnUrl, {
                             cache: 'no-cache', // Forces revalidation with server
                             headers: {
                                 'Cache-Control': 'no-cache, no-store, must-revalidate',
@@ -825,7 +825,7 @@ export const ProjectScreen: React.FC<ProjectScreenProps> = ({ sessionId }) => {
                                 'Expires': '0'
                             }
                         });
-                        
+
                         if (response?.ok) {
                             sessionData = await response.json();
                             console.log('[Session] ✅ Loaded from CDN');
@@ -833,25 +833,25 @@ export const ProjectScreen: React.FC<ProjectScreenProps> = ({ sessionId }) => {
                     } catch (cdnErr) {
                         console.warn('[Session] CDN failed (CORS or network), trying backend proxy...', cdnErr);
                     }
-                    
+
                     // Fallback to backend proxy if CDN failed
                     if (!sessionData) {
                         console.log('[Session] Trying backend:', backendUrl);
-                        response = await fetch(backendUrl, { 
+                        response = await fetch(backendUrl, {
                             cache: 'no-cache',
                             headers: {
                                 'Cache-Control': 'no-cache, no-store, must-revalidate'
                             }
                         });
-                        
+
                         if (response?.ok) {
                             sessionData = await response.json();
                             console.log('[Session] ✅ Loaded from backend proxy');
                         }
                     }
-                    
+
                     if (sessionData && !isCancelled) {
-                        
+
                         console.log('[Session] Successfully loaded instructions.json:', sessionData);
 
                         // Get video URL from timeline structure (new media format)
@@ -892,7 +892,7 @@ export const ProjectScreen: React.FC<ProjectScreenProps> = ({ sessionId }) => {
                         console.log('[Session] Setting CDN data (hook will merge with localStorage)...');
                         setCdnData(sessionData);
                         console.log('[Session] CDN data set, hook will apply localStorage changes');
-                        
+
                         // Initialize active clip to intro at time 0 if timeline exists
                         if (sessionData.timeline) {
                             const initialClip = getActiveClip(sessionData.timeline, 0);
@@ -902,12 +902,12 @@ export const ProjectScreen: React.FC<ProjectScreenProps> = ({ sessionId }) => {
                                 setCurrentTime(0);
                             }
                         }
-                        
+
                         setPreparing(false);
                         console.log('[Session] Loading complete from instructions.json');
                         return true; // Success
                     }
-                    
+
                     // File not ready yet (404, 403, etc.)
                     if (response) {
                         console.log(`[Session] Instructions.json not ready yet (status: ${response.status}), will retry...`);
@@ -918,19 +918,19 @@ export const ProjectScreen: React.FC<ProjectScreenProps> = ({ sessionId }) => {
                     return false;
                 }
             };
-            
+
             // Retry loop with exponential backoff
             setPreparing(true);
-            
+
             while (retryCount < maxRetries && !isCancelled) {
                 const success = await attemptFetch();
-                
+
                 if (success) {
                     return; // Successfully loaded
                 }
-                
+
                 retryCount++;
-                
+
                 if (retryCount < maxRetries) {
                     // Exponential backoff: 1s, 2s, 4s, then stay at 4s
                     const delay = Math.min(1000 * Math.pow(2, retryCount - 1), 4000);
@@ -938,7 +938,7 @@ export const ProjectScreen: React.FC<ProjectScreenProps> = ({ sessionId }) => {
                     await new Promise(resolve => setTimeout(resolve, delay));
                 }
             }
-            
+
             // Max retries reached
             if (!isCancelled) {
                 console.error('[Session] Max retries reached, instructions.json still not available');
@@ -948,7 +948,7 @@ export const ProjectScreen: React.FC<ProjectScreenProps> = ({ sessionId }) => {
         };
 
         loadInstructionsFromCDN();
-        
+
         // Cleanup function to cancel polling if component unmounts
         return () => {
             isCancelled = true;
@@ -972,14 +972,14 @@ export const ProjectScreen: React.FC<ProjectScreenProps> = ({ sessionId }) => {
                     rafId = requestAnimationFrame(updateTimeline);
                     return;
                 }
-                
+
                 const timelineTime = videoTimeToTimelineTime(results.timeline, video.currentTime);
                 const mode = getPlaybackMode(results.timeline, timelineTime);
-                
+
                 // During video playback, continuously update for smooth 60fps timeline
                 if (mode === 'video') {
                     setCurrentTime(timelineTime);
-                    
+
                     // Sync audio periodically (not every frame)
                     const now = performance.now();
                     if (audio && now - lastSyncTime > 100) {
@@ -994,7 +994,7 @@ export const ProjectScreen: React.FC<ProjectScreenProps> = ({ sessionId }) => {
                         lastSyncTime = now;
                     }
                 }
-                
+
                 rafId = requestAnimationFrame(updateTimeline);
             }
         };
@@ -1013,7 +1013,7 @@ export const ProjectScreen: React.FC<ProjectScreenProps> = ({ sessionId }) => {
         const handleTimeUpdate = () => {
             // Skip updates during manual seeks
             if ((video as any).seeking) return;
-            
+
             // Fallback update when RAF isn't running (for non-video mode or paused)
             if (results?.timeline) {
                 const mode = getPlaybackMode(results.timeline, currentTime);
@@ -1067,12 +1067,12 @@ export const ProjectScreen: React.FC<ProjectScreenProps> = ({ sessionId }) => {
                     console.log('[Video] Using raw video duration:', newDuration);
                 }
             }
-            
+
             // Try to get recording dimensions from backend timeline first
             // Fall back to video element dimensions
             let width = video.videoWidth;
             let height = video.videoHeight;
-            
+
             // Check if backend provided recording dimensions in timeline media
             if (results?.timeline?.clips) {
                 const videoClip = results.timeline.clips.find((c: any) => c.name === 'video');
@@ -1085,7 +1085,7 @@ export const ProjectScreen: React.FC<ProjectScreenProps> = ({ sessionId }) => {
                     }
                 }
             }
-            
+
             console.log('[Video] Loaded metadata - Width:', width, 'Height:', height);
             setRecordingDimensions({
                 recordingWidth: width,
@@ -1139,12 +1139,12 @@ export const ProjectScreen: React.FC<ProjectScreenProps> = ({ sessionId }) => {
         // Extract effects and text elements FIRST (don't depend on recordingDimensions for extraction)
         let effectsArray: any[] = [];
         let textElementsArray: any[] = [];
-        
+
         if (results?.displayElements) {
             // New format: flatten effects from clip-based structure
             effectsArray = results.displayElements.flatMap((element: any) => element.effects || []);
             console.log('[Effects] Extracted from displayElements:', effectsArray.length, 'effects');
-            
+
             // Extract text elements from displayElements
             textElementsArray = results.displayElements.flatMap((element: any) => element.elements || []);
             console.log('[TextElements] Extracted from displayElements:', textElementsArray.length, 'text elements');
@@ -1153,7 +1153,7 @@ export const ProjectScreen: React.FC<ProjectScreenProps> = ({ sessionId }) => {
             effectsArray = results.displayEffects;
             console.log('[Effects] Using legacy displayEffects:', effectsArray.length, 'effects');
         }
-        
+
         // Store text elements in state ALWAYS (don't wait for recordingDimensions)
         setTextElements(textElementsArray);
 
@@ -1205,11 +1205,11 @@ export const ProjectScreen: React.FC<ProjectScreenProps> = ({ sessionId }) => {
             if (!video.paused) {
                 video.pause();
             }
-            
+
             // Play audio for intro/outro if available
             if (audio && clip) {
                 const clipRelativeTime = currentTime - clip.start;
-                
+
                 if (currentClipAudio) {
                     // Audio is available for this clip
                     if (audio.paused || Math.abs(audio.currentTime - clipRelativeTime) > 0.5) {
@@ -1230,7 +1230,7 @@ export const ProjectScreen: React.FC<ProjectScreenProps> = ({ sessionId }) => {
                 setCurrentTime(prev => {
                     const next = prev + 0.016; // ~60fps advancement
                     const clip = getActiveClip(results.timeline, prev);
-                    
+
                     if (!clip) return prev;
 
                     // Check if we've reached the end of current clip
@@ -1256,7 +1256,7 @@ export const ProjectScreen: React.FC<ProjectScreenProps> = ({ sessionId }) => {
                             return clip.end;
                         }
                     }
-                    
+
                     return next;
                 });
             }, 16); // ~60fps
@@ -1407,19 +1407,19 @@ export const ProjectScreen: React.FC<ProjectScreenProps> = ({ sessionId }) => {
             if (results?.timeline) {
                 const mode = getPlaybackMode(results.timeline, currentTime);
                 const clip = getActiveClip(results.timeline, currentTime);
-                
+
                 // Update active clip state first
                 setActiveClip(clip);
-                
+
                 if (mode === 'intro' || mode === 'outro') {
                     // For intro/outro, ensure video is paused, play audio, start manual advancement
                     video.pause();
                     setIsPlaying(true);
-                    
+
                     if (audio && clip) {
                         const clipRelativeTime = Math.max(0, currentTime - clip.start);
                         const audioUrl = clipAudioUrls[clip.name as 'intro' | 'video' | 'outro'];
-                        
+
                         if (audioUrl) {
                             // Ensure audio is loaded with correct source
                             if (audio.src !== audioUrl) {
@@ -1445,7 +1445,7 @@ export const ProjectScreen: React.FC<ProjectScreenProps> = ({ sessionId }) => {
                     const videoTime = timelineToVideoTime(results.timeline, currentTime);
                     const clipRelativeTime = Math.max(0, currentTime - (clip?.start || 0));
                     console.log(`[Playback] Starting video at timeline ${currentTime}s (video time ${videoTime}s)`);
-                    
+
                     video.currentTime = videoTime;
                     video.play()
                         .then(() => {
@@ -1506,11 +1506,11 @@ export const ProjectScreen: React.FC<ProjectScreenProps> = ({ sessionId }) => {
         if (results?.timeline) {
             const mode = getPlaybackMode(results.timeline, timelineTime);
             const clip = getActiveClip(results.timeline, timelineTime);
-            
+
             if (!clip) return;
-            
+
             const clipRelativeTime = timelineTime - clip.start;
-            
+
             // Update active clip first
             const previousClip = activeClip;
             setActiveClip(clip);
@@ -1518,7 +1518,7 @@ export const ProjectScreen: React.FC<ProjectScreenProps> = ({ sessionId }) => {
             if (mode === 'intro' || mode === 'outro') {
                 // For intro/outro: pause video, sync audio to clip-relative time
                 video.pause();
-                
+
                 if (audio) {
                     // If switching clips, mark pending seek time and wait for audio to load
                     if (previousClip?.name !== clip.name) {
@@ -1529,7 +1529,7 @@ export const ProjectScreen: React.FC<ProjectScreenProps> = ({ sessionId }) => {
                         audio.currentTime = clipRelativeTime;
                         console.log(`[Seek] ${mode} at timeline ${timelineTime}s, clip-relative ${clipRelativeTime}s`);
                     }
-                    
+
                     // Play audio if we're in playing state
                     if (isPlaying) {
                         audio.play().catch(err => console.error('Audio play error:', err));
@@ -1537,7 +1537,7 @@ export const ProjectScreen: React.FC<ProjectScreenProps> = ({ sessionId }) => {
                         audio.pause();
                     }
                 }
-                
+
                 // Clear seeking flag after a short delay
                 setTimeout(() => {
                     (video as any).isSeeking = false;
@@ -1546,7 +1546,7 @@ export const ProjectScreen: React.FC<ProjectScreenProps> = ({ sessionId }) => {
                 // For video clip: convert to video time
                 const videoTime = timelineToVideoTime(results.timeline, timelineTime);
                 video.currentTime = videoTime;
-                
+
                 if (audio) {
                     if (previousClip?.name !== clip.name) {
                         (audio as any).pendingSeekTime = clipRelativeTime;
@@ -1555,14 +1555,14 @@ export const ProjectScreen: React.FC<ProjectScreenProps> = ({ sessionId }) => {
                         audio.currentTime = clipRelativeTime;
                     }
                 }
-                
+
                 console.log(`[Seek] video at timeline ${timelineTime}s, video time ${videoTime}s`);
-                
+
                 if (isPlaying) {
                     video.play().catch(err => console.error('Video play error:', err));
                     if (audio) audio.play().catch(err => console.error('Audio play error:', err));
                 }
-                
+
                 // Clear seeking flag after video seek completes
                 setTimeout(() => {
                     (video as any).isSeeking = false;
@@ -1572,7 +1572,7 @@ export const ProjectScreen: React.FC<ProjectScreenProps> = ({ sessionId }) => {
             // Fallback for non-timeline videos
             video.currentTime = timelineTime;
             if (audio) audio.currentTime = timelineTime;
-            
+
             // Clear seeking flag
             setTimeout(() => {
                 (video as any).isSeeking = false;
@@ -1618,38 +1618,38 @@ export const ProjectScreen: React.FC<ProjectScreenProps> = ({ sessionId }) => {
 
         try {
             await generateSpeech(sessionId);
-            
+
             // Refetch session data to get updated generatedAudioUrl fields
             const sessionResponse = await fetch(`${API_BASE}/recordings/${sessionId}/session/instructions.json`);
             const sessionData = await sessionResponse.json();
-            
+
             // Update results with new clip narrations
             setResults((prev: any) => ({
                 ...prev,
                 narrations: sessionData.narrations
             }));
-            
+
             // Load clip audio URLs from updated session data
             const clipNarrations = sessionData.narrations;
             if (clipNarrations && Array.isArray(clipNarrations)) {
                 const introClip = clipNarrations.find((c: any) => c.clipName === 'intro');
                 const videoClip = clipNarrations.find((c: any) => c.clipName === 'video');
                 const outroClip = clipNarrations.find((c: any) => c.clipName === 'outro');
-                
+
                 const urls = {
                     intro: formatCdnUrl(introClip?.generatedAudioUrl),
                     video: formatCdnUrl(videoClip?.generatedAudioUrl),
                     outro: formatCdnUrl(outroClip?.generatedAudioUrl)
                 };
-                
+
                 setClipAudioUrls(urls);
-                
+
                 // Force audio reload by clearing current audio
                 setCurrentClipAudio(null);
-                
+
                 // Update hasSpeechGenerated state
                 setHasSpeechGenerated(true);
-                
+
                 console.log('[Audio] Updated clip audio URLs after speech generation (CDN):', urls);
             }
 
@@ -1657,7 +1657,7 @@ export const ProjectScreen: React.FC<ProjectScreenProps> = ({ sessionId }) => {
             // Don't reset video.currentTime because intro clip doesn't use raw video
             // Video will be positioned correctly when transitioning to video clip
             setCurrentTime(0);
-            
+
             // Use the timeline from results to get the intro clip
             if (results?.timeline) {
                 const introClipData = getActiveClip(results.timeline, 0);
@@ -1666,7 +1666,7 @@ export const ProjectScreen: React.FC<ProjectScreenProps> = ({ sessionId }) => {
                     console.log('[Audio] Reset to intro clip at timeline 0 after speech generation');
                 }
             }
-            
+
             // Reset AI audio position
             if (aiAudioRef.current) {
                 aiAudioRef.current.currentTime = 0;
@@ -1695,10 +1695,10 @@ export const ProjectScreen: React.FC<ProjectScreenProps> = ({ sessionId }) => {
 
         try {
             console.log('[AI Rewrite] Starting rewrite for session:', sessionId);
-            
+
             // Call the rewrite API
             const result = await rewriteScript(sessionId);
-            
+
             console.log('[AI Rewrite] Received result:', result);
 
             // Update the narrations in results state with animation
@@ -1710,7 +1710,7 @@ export const ProjectScreen: React.FC<ProjectScreenProps> = ({ sessionId }) => {
 
                 // Clear speech generated flag since script changed
                 setHasSpeechGenerated(false);
-                
+
                 console.log('[AI Rewrite] Updated narrations in state');
             }
         } catch (err: any) {
@@ -1744,7 +1744,7 @@ export const ProjectScreen: React.FC<ProjectScreenProps> = ({ sessionId }) => {
 
             // Extract effects from displayElements or fall back to legacy displayEffects
             let effectsArray: any[] = [];
-            
+
             if (results.displayElements) {
                 // New format: flatten effects from clip-based structure
                 effectsArray = results.displayElements.flatMap((element: any) => element.effects || []);
@@ -1767,25 +1767,67 @@ export const ProjectScreen: React.FC<ProjectScreenProps> = ({ sessionId }) => {
             console.log('[Export] Exporting with', instructions.length, 'effects');
             console.log('[Export] Background:', backgroundColor, 'Aspect Ratio:', aspectRatio);
 
+            // Prepare Intro/Outro for export
+            let introConfig = null;
+            let outroConfig = null;
+
+            if (results.timeline?.clips) {
+                // Find clips
+                const introClip = results.timeline.clips.find((c: any) => c.name === 'intro');
+                const outroClip = results.timeline.clips.find((c: any) => c.name === 'outro');
+
+                // Find texts (prioritize explicit intro/outro fields)
+                const introNarration = results.narrations?.find((n: any) => n.clipName === 'intro');
+                const outroNarration = results.narrations?.find((n: any) => n.clipName === 'outro');
+
+                if (introClip && (results.intro || introNarration)) {
+                    introConfig = {
+                        text: results.intro || introNarration?.text || '',
+                        backgroundColor: introClip.backgroundColor || backgroundColor,
+                        durationMs: (introClip.end - introClip.start) * 1000,
+                        hasBorder: true,
+                        borderColor: '#FFFFFF'
+                    };
+                }
+
+                if (outroClip && (results.outro || outroNarration)) {
+                    outroConfig = {
+                        text: results.outro || outroNarration?.text || '',
+                        backgroundColor: outroClip.backgroundColor || backgroundColor,
+                        durationMs: (outroClip.end - outroClip.start) * 1000,
+                        hasBorder: true,
+                        borderColor: '#FFFFFF'
+                    };
+                }
+            }
+
             // Call export API with background color and aspect ratio
             const response = await exportVideo(sessionId, instructions, recordingDimensions, {
                 backgroundColor,
-                aspectRatio: aspectRatio as AspectRatio
+                aspectRatio: aspectRatio as AspectRatio,
+                intro: introConfig,
+                outro: outroConfig
             });
 
             console.log('[Export] Success:', response);
 
-            if (response.videoUrl) {
+            const videoUrl = response.data?.renderedVideoUrl || response.videoUrl;
+            const finalSessionId = response.data?.sessionId || sessionId;
+
+            if (videoUrl) {
                 // Automatically download the video
                 const link = document.createElement('a');
-                link.href = response.videoUrl;
-                link.download = `explaino_video_${sessionId}.mp4`;
+                link.href = videoUrl;
+                link.download = `explaino_video_${finalSessionId}.mp4`;
                 link.target = '_blank';
                 document.body.appendChild(link);
                 link.click();
                 document.body.removeChild(link);
 
-                console.log('[Export] Download triggered for:', response.videoUrl);
+                console.log('[Export] Download triggered for:', videoUrl);
+            } else {
+                console.error('[Export] No video URL found in response:', response);
+                setError('Export succeeded but no video URL was returned');
             }
         } catch (err: any) {
             console.error('[Export] Error:', err);
@@ -1917,14 +1959,14 @@ export const ProjectScreen: React.FC<ProjectScreenProps> = ({ sessionId }) => {
                         // Update the background color of the current active clip
                         if (activeClip && results?.timeline?.clips) {
                             const oldColor = activeClip.backgroundColor || backgroundColor;
-                            
+
                             const updatedClips = results.timeline.clips.map((clip: any) => {
                                 if (clip.name === activeClip.name) {
                                     return { ...clip, backgroundColor: color };
                                 }
                                 return clip;
                             });
-                            
+
                             const updatedResults = {
                                 ...results,
                                 timeline: {
@@ -1932,9 +1974,9 @@ export const ProjectScreen: React.FC<ProjectScreenProps> = ({ sessionId }) => {
                                     clips: updatedClips
                                 }
                             };
-                            
+
                             setResults(updatedResults);
-                            
+
                             // Track change
                             trackChange({
                                 type: 'backgroundColor',
@@ -1943,7 +1985,7 @@ export const ProjectScreen: React.FC<ProjectScreenProps> = ({ sessionId }) => {
                                 oldValue: oldColor,
                                 newValue: color
                             });
-                            
+
                             // Update the active clip with the new backgroundColor immediately
                             setActiveClip({
                                 ...activeClip,
