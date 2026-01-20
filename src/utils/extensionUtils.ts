@@ -1,6 +1,6 @@
 /* eslint-disable no-undef */
 
-const EXTENSION_ID = "kphgfcamocnmlmbbggophdgbgemijnig";
+const EXTENSION_ID = "jemkddimmnncailhokfcbbppkmaackjb";
 
 /**
  * Checks if the Explaino extension is installed and ready.
@@ -43,23 +43,31 @@ export const checkExtensionConnection = (): Promise<boolean> => {
 
 /**
  * Sends a message to the extension to open its UI.
+ * @param clientId - The client_id (user_id) to pass to the extension
  */
-export const openExtension = (): void => {
+export const openExtension = (clientId?: string): void => {
     // @ts-ignore
     if (typeof window === "undefined" || !window.chrome || !window.chrome.runtime) return;
+
+    console.log("🚀 Sending to extension - client_id:", clientId);
 
     try {
         // @ts-ignore
         window.chrome.runtime.sendMessage(
             EXTENSION_ID,
-            { type: "OPEN_EXTENSION" },
+            {
+                type: "OPEN_EXTENSION",
+                client_id: clientId
+            },
             (response: any) => {
                 if (response?.success) {
-                    console.log("Extension opened");
+                    console.log("✅ Extension opened successfully with client_id:", clientId);
+                } else {
+                    console.warn("⚠️ Extension response:", response);
                 }
             }
         );
     } catch (error) {
-        console.error("Failed to open extension", error);
+        console.error("❌ Failed to open extension", error);
     }
 };

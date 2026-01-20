@@ -72,7 +72,8 @@ export const HomeSection = (): JSX.Element => {
             onClick={async () => {
               const isConnected = await checkExtensionConnection();
               if (isConnected) {
-                openExtension();
+                const clientId = localStorage.getItem("user_id");
+                openExtension(clientId || undefined);
               } else {
                 window.open("https://chromewebstore.google.com/detail/desklamp/ioiblpkpkombnhjbojlcjocfcomhnlgn", "_blank");
               }
