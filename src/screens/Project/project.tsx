@@ -9,6 +9,7 @@ import { MusicSection } from './sections/MusicSection';
 import { MainCanvasSection, AspectRatio } from './sections/MainCanvasSection';
 import { VideoLayer, VideoControls } from './sections/VideoPlayerSection';
 import { TextEditPanel } from './sections/TextEditPanel';
+import { MediaBarSection } from './sections/MediaBarSection';
 
 // Services & Hooks
 import { useProcessingWebSocket } from '../../hooks/useProcessingWebSocket';
@@ -79,6 +80,7 @@ export const ProjectScreen: React.FC<ProjectScreenProps> = ({ sessionId }) => {
     const [activeSidebarItem, setActiveSidebarItem] = useState<SidebarMenuItem | null>('script');
     const [aspectRatio, setAspectRatio] = useState<AspectRatio>('16:9');
     const [backgroundColor, setBackgroundColor] = useState('#1a1625');
+    const [aspectRatioInitialized, setAspectRatioInitialized] = useState(false);
 
     // ============== VIDEO STATE ==============
     const [videoUrl, setVideoUrl] = useState<string | null>(null);
@@ -162,6 +164,34 @@ export const ProjectScreen: React.FC<ProjectScreenProps> = ({ sessionId }) => {
     // Compute video visibility based on current clip
     const videoVisible = results?.timeline ? isVideoVisible(results.timeline, currentTime) : true;
 
+    // ============== ASPECT RATIO HANDLER ==============
+    const handleAspectRatioChange = (newRatio: AspectRatio) => {
+        console.log('[handleAspectRatioChange] Called with value:', newRatio);
+        const oldRatio = aspectRatio;
+        
+        // Update local state
+        setAspectRatio(newRatio);
+
+        // Update in results timeline
+        if (results?.timeline) {
+            setResults({
+                ...results,
+                timeline: {
+                    ...results.timeline,
+                    aspectRatio: newRatio
+                }
+            });
+
+            // Track change
+            trackChange({
+                type: 'aspectRatio',
+                path: 'timeline.aspectRatio',
+                oldValue: oldRatio,
+                newValue: newRatio
+            });
+        }
+    };
+
     // ============== BORDER RADIUS HANDLER ==============
     const handleBorderRadiusChange = (value: number) => {
         console.log('[handleBorderRadiusChange] Called with value:', value);
@@ -208,6 +238,75 @@ export const ProjectScreen: React.FC<ProjectScreenProps> = ({ sessionId }) => {
                 newValue: value
             });
         }
+    };
+
+    // ============== MEDIA SCALE HANDLER ==============
+    // Track initial scale for change tracking (only set when drag starts)
+    const [initialScaleForTracking, setInitialScaleForTracking] = useState<number | null>(null);
+
+    const handleMediaScaleChange = (value: number, isComplete: boolean = true) => {
+        console.log('[handleMediaScaleChange] Called with value:', value, 'isComplete:', isComplete);
+        if (!activeClip || !activeClip.media || activeClip.media.length === 0) {
+            console.log('[handleMediaScaleChange] No active clip or media, returning');
+            return;
+        }
+
+        const currentScale = activeClip.media[0]?.scale ?? 85;
+        
+        // Store initial scale when drag starts (for change tracking)
+        if (initialScaleForTracking === null) {
+            setInitialScaleForTracking(currentScale);
+        }
+
+        // Clamp value to 10-150
+        const clampedValue = Math.max(10, Math.min(150, value));
+
+        // Update the active clip's media scale
+        const updatedClip = {
+            ...activeClip,
+            media: activeClip.media.map((mediaItem: any, index: number) =>
+                index === 0 ? { ...mediaItem, scale: clampedValue } : mediaItem
+            )
+        };
+
+        setActiveClip(updatedClip);
+
+        // Update in results timeline as well
+        if (results?.timeline?.clips) {
+            const updatedClips = results.timeline.clips.map((clip: any) =>
+                clip.name === activeClip.name ? updatedClip : clip
+            );
+
+            setResults({
+                ...results,
+                timeline: {
+                    ...results.timeline,
+                    clips: updatedClips
+                }
+            });
+
+            // Only track change when complete (user released slider/handle)
+            if (isComplete) {
+                const oldScale = initialScaleForTracking ?? currentScale;
+                console.log('[handleMediaScaleChange] Tracking change - Old:', oldScale, '→ New:', clampedValue);
+                trackChange({
+                    type: 'mediaScale',
+                    clipName: activeClip.name,
+                    path: `timeline.clips[${activeClip.name}].media[0].scale`,
+                    oldValue: oldScale,
+                    newValue: clampedValue
+                });
+                // Reset initial scale tracker
+                setInitialScaleForTracking(null);
+            }
+        }
+    };
+
+    // ============== FIT TO SCREEN HANDLER ==============
+    const handleFitToScreen = () => {
+        console.log('[handleFitToScreen] Fitting video to screen');
+        // Fit to screen means scale to 100% (fills the frame)
+        handleMediaScaleChange(100, true);
     };
 
     // ============== TEXT ELEMENT RESIZE HANDLER ==============
@@ -336,7 +435,6 @@ export const ProjectScreen: React.FC<ProjectScreenProps> = ({ sessionId }) => {
         setIsTextSelected(true);
         setIsVideoSelected(false); // Deselect video when text is selected
         setIsTextEditPanelOpen(true); // Open the edit panel
-        setActiveSidebarItem('elements'); // Switch to Elements sidebar
     }, []);
 
     const handleTextDeselect = useCallback(() => {
@@ -344,6 +442,8 @@ export const ProjectScreen: React.FC<ProjectScreenProps> = ({ sessionId }) => {
         setSelectedTextElement(null);
         setIsTextSelected(false);
         setIsTextEditPanelOpen(false);
+        // Reopen script/transcription panel when text is deselected
+        setActiveSidebarItem('script');
     }, []);
 
     // Click outside detection to deselect text elements
@@ -548,7 +648,8 @@ export const ProjectScreen: React.FC<ProjectScreenProps> = ({ sessionId }) => {
         if (!clip.elements || !clip.elements[elementIndex]) return;
 
         const element = clip.elements[elementIndex];
-        const oldElement = { ...element };
+        // Deep clone for proper change tracking
+        const oldElement = JSON.parse(JSON.stringify(element));
 
         // Calculate new dimensions if font size is changing
         let dimensionUpdate = {};
@@ -566,15 +667,35 @@ export const ProjectScreen: React.FC<ProjectScreenProps> = ({ sessionId }) => {
             };
         }
 
+        // Deep merge style updates to preserve nested objects like outline, shadow, background
+        const mergedStyle = updates.style ? {
+            ...element.style,
+            ...updates.style,
+            // Deep merge nested style objects
+            outline: updates.style.outline !== undefined ? {
+                ...(element.style?.outline || {}),
+                ...updates.style.outline
+            } : element.style?.outline,
+            shadow: updates.style.shadow !== undefined ? {
+                ...(element.style?.shadow || {}),
+                ...updates.style.shadow,
+                position: updates.style.shadow?.position !== undefined ? {
+                    ...(element.style?.shadow?.position || {}),
+                    ...updates.style.shadow.position
+                } : element.style?.shadow?.position
+            } : element.style?.shadow,
+            background: updates.style.background !== undefined ? {
+                ...(element.style?.background || {}),
+                ...updates.style.background
+            } : element.style?.background,
+        } : element.style;
+
         // Merge updates into element
         const updatedElement = {
             ...element,
             ...updates,
             ...dimensionUpdate,
-            style: {
-                ...element.style,
-                ...(updates.style || {})
-            }
+            style: mergedStyle
         };
 
         // Update the element
@@ -606,7 +727,7 @@ export const ProjectScreen: React.FC<ProjectScreenProps> = ({ sessionId }) => {
 
         // Track change
         trackChange({
-            type: 'textElementStyle',
+            type: 'textElement',
             clipName: clipName,
             path: `displayElements.${clipIndex}.elements.${elementIndex}`,
             oldValue: oldElement,
@@ -615,6 +736,66 @@ export const ProjectScreen: React.FC<ProjectScreenProps> = ({ sessionId }) => {
 
         console.log('[handleTextElementUpdate] Updated element:', updatedElement);
     }, [selectedTextElement, results, setResults, setTextElements, trackChange]);
+
+    // Handler for updating text content directly (from inline editing on canvas)
+    const handleTextContentChange = useCallback((clipName: string, elementIndex: number, newContent: string) => {
+        if (!results?.displayElements) return;
+
+        const clipIndex = results.displayElements.findIndex((clip: any) => clip.clipName === clipName);
+        if (clipIndex === -1) return;
+
+        const clip = results.displayElements[clipIndex];
+        if (!clip.elements || !clip.elements[elementIndex]) return;
+
+        const element = clip.elements[elementIndex];
+        const oldContent = element.content;
+
+        // Update the element with new content
+        const updatedElement = {
+            ...element,
+            content: newContent
+        };
+
+        // Update the elements array
+        const updatedElements = [...clip.elements];
+        updatedElements[elementIndex] = updatedElement;
+
+        // Update the clip
+        const updatedDisplayElements = [...results.displayElements];
+        updatedDisplayElements[clipIndex] = {
+            ...clip,
+            elements: updatedElements
+        };
+
+        // Update results
+        setResults({
+            ...results,
+            displayElements: updatedDisplayElements
+        });
+
+        // Update textElements state for live preview
+        const allTextElements = updatedDisplayElements.flatMap((c: any) => c.elements || []);
+        setTextElements(allTextElements);
+
+        // Update selected element reference if this element is selected
+        if (selectedTextElement?.clipName === clipName && selectedTextElement?.elementIndex === elementIndex) {
+            setSelectedTextElement(prev => prev ? {
+                ...prev,
+                element: updatedElement
+            } : null);
+        }
+
+        // Track change
+        trackChange({
+            type: 'textElement',
+            clipName: clipName,
+            path: `displayElements.${clipIndex}.elements.${elementIndex}.content`,
+            oldValue: oldContent,
+            newValue: newContent
+        });
+
+        console.log('[handleTextContentChange] Updated text content:', { clipName, elementIndex, oldContent, newContent });
+    }, [results, setResults, setTextElements, selectedTextElement, trackChange]);
 
     // ============== GLOBAL CLICK LISTENER FOR VIDEO DESELECTION ==============
     // Deselect video when clicking outside video area (on background or other UI elements)
@@ -780,10 +961,18 @@ export const ProjectScreen: React.FC<ProjectScreenProps> = ({ sessionId }) => {
                 setActiveClip(initialClip);
             }
         }
-    }, [results]);
+
+        // Initialize aspectRatio from timeline data (only once)
+        if (results?.timeline?.aspectRatio && !aspectRatioInitialized) {
+            const dataAspectRatio = results.timeline.aspectRatio as AspectRatio;
+            console.log('[Timeline] Initializing aspectRatio from data:', dataAspectRatio);
+            setAspectRatio(dataAspectRatio);
+            setAspectRatioInitialized(true);
+        }
+    }, [results, aspectRatioInitialized]);
     const showTranscriptionPanel = activeSidebarItem === 'script';
     const showMusicPanel = activeSidebarItem === 'music';
-    const showElementsPanel = activeSidebarItem === 'elements';
+    // Note: Elements panel logic moved to TextEditPanel which shows based on isTextSelected
 
     // ============== EFFECTS ==============
 
@@ -1142,8 +1331,17 @@ export const ProjectScreen: React.FC<ProjectScreenProps> = ({ sessionId }) => {
 
         if (results?.displayElements) {
             // New format: flatten effects from clip-based structure
-            effectsArray = results.displayElements.flatMap((element: any) => element.effects || []);
-            console.log('[Effects] Extracted from displayElements:', effectsArray.length, 'effects');
+            // CRITICAL: Include clip boundaries with each effect to prevent bleeding into other clips
+            effectsArray = results.displayElements.flatMap((element: any) => {
+                const clipStart = element.clipStart;
+                const clipEnd = element.clipEnd;
+                return (element.effects || []).map((effect: any) => ({
+                    ...effect,
+                    clipStart,
+                    clipEnd
+                }));
+            });
+            console.log('[Effects] Extracted from displayElements:', effectsArray.length, 'effects with clip boundaries');
 
             // Extract text elements from displayElements
             textElementsArray = results.displayElements.flatMap((element: any) => element.elements || []);
@@ -1310,6 +1508,10 @@ export const ProjectScreen: React.FC<ProjectScreenProps> = ({ sessionId }) => {
 
             const activeEffects = getActiveEffects(normalizedEffects, time);
 
+            // Get base scale from media data (default 85 → 0.85)
+            const mediaScale = activeClip?.media?.[0]?.scale ?? 85;
+            const baseScale = mediaScale / 100;
+
             if (activeEffects.length > 0) {
                 const effect = resolveZoomEffect(activeEffects);
 
@@ -1330,8 +1532,8 @@ export const ProjectScreen: React.FC<ProjectScreenProps> = ({ sessionId }) => {
                         effectProgress, anchorX, anchorY, targetScale as number
                     );
 
-                    // Apply scale with base of 0.94 (initial video size)
-                    const finalScale = 0.94 * scale;
+                    // Apply scale with base from media data (default 85% → 0.85)
+                    const finalScale = baseScale * scale;
 
                     // Use transform3d for GPU acceleration
                     videoLayer.style.transform = `scale3d(${finalScale}, ${finalScale}, 1) translate3d(${translateX}%, ${translateY}%, 0)`;
@@ -1348,7 +1550,7 @@ export const ProjectScreen: React.FC<ProjectScreenProps> = ({ sessionId }) => {
             } else {
                 // Reset to neutral state with smooth transition
                 videoLayer.style.transition = 'transform 0.4s cubic-bezier(0.25, 0.1, 0.25, 1)';
-                videoLayer.style.transform = 'scale3d(0.94, 0.94, 1) translate3d(0%, 0%, 0)';
+                videoLayer.style.transform = `scale3d(${baseScale}, ${baseScale}, 1) translate3d(0%, 0%, 0)`;
                 currentEffectId = null;
             }
 
@@ -1384,7 +1586,7 @@ export const ProjectScreen: React.FC<ProjectScreenProps> = ({ sessionId }) => {
             // Clean up GPU hint
             if (videoLayer) videoLayer.style.willChange = 'auto';
         };
-    }, [normalizedEffects, results?.timeline]);
+    }, [normalizedEffects, results?.timeline, activeClip]);
 
     // ============== HANDLERS ==============
 
@@ -1900,11 +2102,54 @@ export const ProjectScreen: React.FC<ProjectScreenProps> = ({ sessionId }) => {
                     onItemClick={handleSidebarItemClick}
                 />
 
-                {/* Transcription Panel (conditionally shown) */}
-                {showTranscriptionPanel && (
+                {/* Media Bar Section (shown when video is selected) */}
+                {isVideoSelected && !isTextSelected && (
+                    <MediaBarSection
+                        isOpen={isVideoSelected}
+                        onClose={() => {
+                            setIsVideoSelected(false);
+                            // Reopen script/transcription panel when video is deselected
+                            setActiveSidebarItem('script');
+                        }}
+                        scale={activeClip?.media?.[0]?.scale ?? 85}
+                        onScaleChange={handleMediaScaleChange}
+                        onFitToScreen={handleFitToScreen}
+                    />
+                )}
+
+                {/* Text Edit Panel (shown when text is selected - overrides other panels) */}
+                {isTextSelected && !isVideoSelected && (
+                    <TextEditPanel
+                        isOpen={isTextEditPanelOpen && isTextSelected}
+                        onClose={handleTextDeselect}
+                        element={selectedTextElement?.element || null}
+                        clipName={selectedTextElement?.clipName || ''}
+                        elementIndex={selectedTextElement?.elementIndex || 0}
+                        clipStart={(() => {
+                            if (!selectedTextElement?.clipName || !results?.displayElements) return 0;
+                            const clip = results.displayElements.find((c: any) => c.clipName === selectedTextElement.clipName);
+                            return clip?.clipStart || 0;
+                        })()}
+                        clipEnd={(() => {
+                            if (!selectedTextElement?.clipName || !results?.displayElements) return duration;
+                            const clip = results.displayElements.find((c: any) => c.clipName === selectedTextElement.clipName);
+                            return clip?.clipEnd || duration;
+                        })()}
+                        onUpdate={handleTextElementUpdate}
+                        onDelete={() => {
+                            if (selectedTextElement) {
+                                handleTextElementDelete(selectedTextElement.clipName, selectedTextElement.elementIndex);
+                                handleTextDeselect();
+                            }
+                        }}
+                    />
+                )}
+
+                {/* Transcription Panel (shown when nothing is selected and sidebar is 'script') */}
+                {showTranscriptionPanel && !isVideoSelected && !isTextSelected && (
                     <TranscriptionSection
                         narrations={narrations}
-                        isVisible={showTranscriptionPanel}
+                        isVisible={showTranscriptionPanel && !isVideoSelected && !isTextSelected}
                         onClose={() => setActiveSidebarItem(null)}
                         onSyncPointClick={handleSyncPointClick}
                         onGenerateScript={handleGenerateSpeech}
@@ -1918,10 +2163,10 @@ export const ProjectScreen: React.FC<ProjectScreenProps> = ({ sessionId }) => {
                     />
                 )}
 
-                {/* Music Panel (conditionally shown) */}
-                {showMusicPanel && (
+                {/* Music Panel (conditionally shown - hidden when video/text selected) */}
+                {showMusicPanel && !isVideoSelected && !isTextSelected && (
                     <MusicSection
-                        isVisible={showMusicPanel}
+                        isVisible={showMusicPanel && !isVideoSelected && !isTextSelected}
                         onClose={() => setActiveSidebarItem(null)}
                         onMusicSelect={(url, filename) => {
                             console.log('[Music] Selected:', filename, url);
@@ -1930,31 +2175,11 @@ export const ProjectScreen: React.FC<ProjectScreenProps> = ({ sessionId }) => {
                     />
                 )}
 
-                {/* Elements Panel - Text Edit (conditionally shown) */}
-                {showElementsPanel && (
-                    <TextEditPanel
-                        isOpen={isTextEditPanelOpen && isTextSelected}
-                        onClose={handleTextDeselect}
-                        element={selectedTextElement?.element || null}
-                        clipName={selectedTextElement?.clipName || ''}
-                        elementIndex={selectedTextElement?.elementIndex || 0}
-                        clipStart={0}
-                        clipEnd={duration}
-                        onUpdate={handleTextElementUpdate}
-                        onDelete={() => {
-                            if (selectedTextElement) {
-                                handleTextElementDelete(selectedTextElement.clipName, selectedTextElement.elementIndex);
-                                handleTextDeselect();
-                            }
-                        }}
-                    />
-                )}
-
                 {/* Main Canvas */}
                 <MainCanvasSection
                     aspectRatio={aspectRatio}
                     backgroundColor={currentBackgroundColor}
-                    onAspectRatioChange={setAspectRatio}
+                    onAspectRatioChange={handleAspectRatioChange}
                     onBackgroundColorChange={(color: string) => {
                         // Update the background color of the current active clip
                         if (activeClip && results?.timeline?.clips) {
@@ -2005,9 +2230,25 @@ export const ProjectScreen: React.FC<ProjectScreenProps> = ({ sessionId }) => {
                     onTextFontFamilyChange={(fontFamily) => handleTextElementUpdate({ style: { fontFamily } })}
                     onTextFontSizeChange={(fontSize) => handleTextElementUpdate({ style: { fontSize } })}
                     onTextFontWeightChange={(fontWeight) => handleTextElementUpdate({ style: { fontWeight } })}
-                    onTextBoldChange={(isBold) => handleTextElementUpdate({ style: { fontWeight: isBold ? 'bold' : 'normal' } })}
-                    onTextItalicChange={(isItalic) => handleTextElementUpdate({ style: { fontStyle: isItalic ? 'italic' : 'normal' } })}
-                    onTextUnderlineChange={(isUnderline) => handleTextElementUpdate({ style: { textDecoration: isUnderline ? 'underline' : 'none' } })}
+                    onTextBoldToggle={() => {
+                        if (selectedTextElement) {
+                            const currentWeight = selectedTextElement.element?.style?.fontWeight || 'Regular';
+                            const isBold = ['Bold', 'SemiBold', 'ExtraBold', 'Black'].includes(currentWeight);
+                            handleTextElementUpdate({ style: { fontWeight: isBold ? 'Regular' : 'Bold' } });
+                        }
+                    }}
+                    onTextItalicToggle={() => {
+                        if (selectedTextElement) {
+                            const isItalic = selectedTextElement.element?.style?.fontStyle === 'italic';
+                            handleTextElementUpdate({ style: { fontStyle: isItalic ? 'normal' : 'italic' } });
+                        }
+                    }}
+                    onTextUnderlineToggle={() => {
+                        if (selectedTextElement) {
+                            const isUnderline = selectedTextElement.element?.style?.textDecoration === 'underline';
+                            handleTextElementUpdate({ style: { textDecoration: isUnderline ? 'none' : 'underline' } });
+                        }
+                    }}
                     onTextAlignChange={(textAlign) => handleTextElementUpdate({ style: { textAlign } })}
                     onTextColorChange={(color) => handleTextElementUpdate({ style: { color } })}
                     onTextDelete={() => {
@@ -2060,6 +2301,8 @@ export const ProjectScreen: React.FC<ProjectScreenProps> = ({ sessionId }) => {
                         hasMedia={currentClipHasMedia}
                         borderRadius={activeClip?.media?.[0]?.borderRadius ?? 3}
                         isVideoSelected={isVideoSelected}
+                        currentScale={activeClip?.media?.[0]?.scale ?? 85}
+                        onScaleChange={handleMediaScaleChange}
                         onVideoClick={() => {
                             if (currentClipHasMedia) {
                                 setIsVideoSelected(true);
@@ -2071,6 +2314,7 @@ export const ProjectScreen: React.FC<ProjectScreenProps> = ({ sessionId }) => {
                         onTextDeselect={handleTextDeselect}
                         onTextMove={handleTextMove}
                         onTextResize={handleTextResize}
+                        onTextContentChange={handleTextContentChange}
                         displayElements={results?.displayElements || results?.displayEffects}
                     />
                 </MainCanvasSection>

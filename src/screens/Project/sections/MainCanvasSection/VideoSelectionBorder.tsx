@@ -1,15 +1,97 @@
-import React from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 
 interface VideoSelectionBorderProps {
     isSelected: boolean;
     videoDimensions?: { width: number; height: number } | null;
+    currentScale?: number; // Current scale value (10-150)
+    onScaleChange?: (scale: number, isComplete?: boolean) => void; // Callback for scale changes
 }
 
 /**
  * VideoSelectionBorder - Shows selection feedback with border and corner handles
  * Renders when video clip is selected, similar to Clueso's selection UI
+ * Corner handles can be dragged to resize (change scale)
  */
-export const VideoSelectionBorder: React.FC<VideoSelectionBorderProps> = ({ isSelected, videoDimensions }) => {
+export const VideoSelectionBorder: React.FC<VideoSelectionBorderProps> = ({ 
+    isSelected, 
+    videoDimensions,
+    currentScale = 85,
+    onScaleChange,
+}) => {
+    const [isDragging, setIsDragging] = useState(false);
+    const [dragStartPos, setDragStartPos] = useState({ x: 0, y: 0 });
+    const [dragStartScale, setDragStartScale] = useState(currentScale);
+    const [dragCorner, setDragCorner] = useState<string | null>(null);
+
+    // Handle mouse move during drag
+    const handleMouseMove = useCallback((e: MouseEvent) => {
+        if (!isDragging || !dragCorner || !videoDimensions) return;
+
+        // Calculate distance moved from start
+        const dx = e.clientX - dragStartPos.x;
+        const dy = e.clientY - dragStartPos.y;
+
+        // Use diagonal distance for scaling (average of x and y movement)
+        // Positive = away from center = scale up, Negative = toward center = scale down
+        let scaleDelta = 0;
+        
+        if (dragCorner === 'top-left') {
+            // Moving up-left = scale up, down-right = scale down
+            scaleDelta = (-dx - dy) / 4;
+        } else if (dragCorner === 'top-right') {
+            // Moving up-right = scale up, down-left = scale down
+            scaleDelta = (dx - dy) / 4;
+        } else if (dragCorner === 'bottom-left') {
+            // Moving down-left = scale up, up-right = scale down
+            scaleDelta = (-dx + dy) / 4;
+        } else if (dragCorner === 'bottom-right') {
+            // Moving down-right = scale up, up-left = scale down
+            scaleDelta = (dx + dy) / 4;
+        }
+
+        // Calculate new scale (clamp to 10-150)
+        const newScale = Math.max(10, Math.min(150, dragStartScale + scaleDelta));
+        
+        // Update scale (visual only, not saving yet)
+        onScaleChange?.(newScale, false);
+    }, [isDragging, dragCorner, dragStartPos, dragStartScale, videoDimensions, onScaleChange]);
+
+    // Handle mouse up - end drag and save
+    const handleMouseUp = useCallback(() => {
+        if (isDragging && onScaleChange) {
+            // Complete the scale change (save to localStorage)
+            onScaleChange(currentScale, true);
+        }
+        setIsDragging(false);
+        setDragCorner(null);
+    }, [isDragging, currentScale, onScaleChange]);
+
+    // Add/remove global mouse listeners
+    useEffect(() => {
+        if (isDragging) {
+            document.addEventListener('mousemove', handleMouseMove);
+            document.addEventListener('mouseup', handleMouseUp);
+            // Prevent text selection during drag
+            document.body.style.userSelect = 'none';
+        }
+
+        return () => {
+            document.removeEventListener('mousemove', handleMouseMove);
+            document.removeEventListener('mouseup', handleMouseUp);
+            document.body.style.userSelect = '';
+        };
+    }, [isDragging, handleMouseMove, handleMouseUp]);
+
+    // Start drag from a corner handle
+    const handleCornerMouseDown = (corner: string) => (e: React.MouseEvent) => {
+        e.preventDefault();
+        e.stopPropagation();
+        setIsDragging(true);
+        setDragCorner(corner);
+        setDragStartPos({ x: e.clientX, y: e.clientY });
+        setDragStartScale(currentScale);
+    };
+
     if (!isSelected || !videoDimensions) return null;
 
     // Calculate centering offset
@@ -43,14 +125,14 @@ export const VideoSelectionBorder: React.FC<VideoSelectionBorderProps> = ({ isSe
                 }}
             />
 
-            {/* Corner Handles */}
+            {/* Corner Handles - Draggable for resize */}
             {['top-left', 'top-right', 'bottom-left', 'bottom-right'].map((position) => {
                 const getPositionStyles = (): React.CSSProperties => {
                     const baseStyles: React.CSSProperties = {
                         position: 'absolute',
                         width: '12px',
                         height: '12px',
-                        backgroundColor: '#38BDF8', // Sky blue
+                        backgroundColor: dragCorner === position ? '#0ea5e9' : '#38BDF8', // Darker when dragging
                         border: '2px solid white',
                         borderRadius: '50%',
                         pointerEvents: 'auto',
@@ -62,6 +144,8 @@ export const VideoSelectionBorder: React.FC<VideoSelectionBorderProps> = ({ isSe
                             ? 'sw-resize'
                             : 'se-resize',
                         boxShadow: '0 2px 6px rgba(0, 0, 0, 0.3)',
+                        transform: dragCorner === position ? 'scale(1.2)' : 'scale(1)',
+                        transition: isDragging ? 'none' : 'transform 0.15s, background-color 0.15s',
                     };
 
                     if (position === 'top-left') {
@@ -78,8 +162,9 @@ export const VideoSelectionBorder: React.FC<VideoSelectionBorderProps> = ({ isSe
                 return (
                     <div
                         key={position}
-                        className="transition-transform duration-150 hover:scale-125"
+                        className="hover:scale-125"
                         style={getPositionStyles()}
+                        onMouseDown={handleCornerMouseDown(position)}
                     />
                 );
             })}

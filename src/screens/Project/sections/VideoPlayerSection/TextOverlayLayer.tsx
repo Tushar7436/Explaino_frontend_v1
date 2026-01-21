@@ -1,5 +1,27 @@
 import React, { useRef, useEffect, useState, useCallback } from 'react';
 
+// Map font weight names to CSS font-weight values
+const fontWeightMap: Record<string, number | string> = {
+    'Light': 300,
+    'Regular': 400,
+    'Normal': 400,
+    'normal': 400,
+    'Medium': 500,
+    'SemiBold': 600,
+    'Semi Bold': 600,
+    'Bold': 700,
+    'bold': 700,
+    'ExtraBold': 800,
+    'Extra Bold': 800,
+    'Black': 900,
+};
+
+// Helper function to convert named font weights to CSS values
+const getFontWeight = (weight: string | number): number | string => {
+    if (typeof weight === 'number') return weight;
+    return fontWeightMap[weight] || weight;
+};
+
 interface TextPosition {
     x: number;
     y: number;
@@ -11,6 +33,7 @@ interface TextDimension {
 }
 
 interface TextOutline {
+    enabled?: boolean;
     width: number;
     color: string;
 }
@@ -21,6 +44,7 @@ interface TextShadowPosition {
 }
 
 interface TextShadow {
+    enabled?: boolean;
     color: string;
     position: TextShadowPosition;
     blur?: number;
@@ -33,12 +57,18 @@ interface TextBackground {
     borderRadius?: number;
     radius?: number;
     padding?: number;
+    opacity?: number;
 }
 
 interface TextStyle {
     fontFamily: string;
     fontSize: number;
     fontWeight: string;
+    fontStyle?: string;
+    textDecoration?: string;
+    textAlign?: string;
+    lineHeight?: number;
+    letterSpacing?: number;
     color: string;
     outline?: TextOutline;
     shadow?: TextShadow;
@@ -72,6 +102,7 @@ interface TextOverlayLayerProps {
     onTextDeselect?: () => void;
     onTextMove?: (clipName: string, elementIndex: number, newX: number, newY: number) => void;
     onTextResize?: (clipName: string, elementIndex: number, newWidth: number, newHeight: number, resizeType?: 'horizontal' | 'diagonal') => void;
+    onTextContentChange?: (clipName: string, elementIndex: number, newContent: string) => void;
     // Clip info for element mapping
     displayElements?: any[];
 }
@@ -91,6 +122,7 @@ export const TextOverlayLayer: React.FC<TextOverlayLayerProps> = ({
     onTextDeselect,
     onTextMove,
     onTextResize,
+    onTextContentChange,
     displayElements = [],
 }) => {
     const containerRef = useRef<HTMLDivElement>(null);
@@ -98,6 +130,9 @@ export const TextOverlayLayer: React.FC<TextOverlayLayerProps> = ({
     const [containerWidth, setContainerWidth] = useState(1920);
     const [isDragging, setIsDragging] = useState(false);
     const [isResizing, setIsResizing] = useState<string | null>(null); // 'nw', 'ne', 'sw', 'se', 'n', 's', 'e', 'w'
+    const [isEditing, setIsEditing] = useState(false); // Inline text editing mode
+    const [editingContent, setEditingContent] = useState(''); // Content being edited
+    const editInputRef = useRef<HTMLTextAreaElement>(null);
     const [alignmentGuides, setAlignmentGuides] = useState<{
         showVerticalCenter: boolean;
         showHorizontalCenter: boolean;
@@ -688,6 +723,15 @@ export const TextOverlayLayer: React.FC<TextOverlayLayerProps> = ({
                 // Calculate font size based on actual container height
                 const fontSizePx = (style.fontSize / recordingHeight) * containerHeight;
                 
+                // Determine text alignment and justify content
+                const textAlignValue = style.textAlign || 'center';
+                const justifyContentMap: Record<string, string> = {
+                    'left': 'flex-start',
+                    'center': 'center',
+                    'right': 'flex-end',
+                };
+                const justifyContent = justifyContentMap[textAlignValue] || 'center';
+
                 // Build CSS styles
                 const textStyle: React.CSSProperties = {
                     position: 'absolute',
@@ -700,14 +744,17 @@ export const TextOverlayLayer: React.FC<TextOverlayLayerProps> = ({
                     wordWrap: 'break-word',
                     overflowWrap: 'break-word',
                     whiteSpace: 'pre-wrap',
-                    fontWeight: style.fontWeight,
+                    fontWeight: getFontWeight(style.fontWeight),
+                    fontStyle: style.fontStyle || 'normal',
+                    textDecoration: style.textDecoration || 'none',
                     color: style.color,
-                    textAlign: 'center',
+                    textAlign: textAlignValue as React.CSSProperties['textAlign'],
                     display: 'flex',
                     alignItems: 'center',
-                    justifyContent: 'center',
+                    justifyContent: justifyContent,
                     flexWrap: 'wrap',
-                    lineHeight: '1.3',
+                    lineHeight: style.lineHeight || 1.3,
+                    letterSpacing: style.letterSpacing ? `${style.letterSpacing * 0.01}em` : 'normal',
                     cursor: 'pointer',
                     pointerEvents: 'auto',
                     // Selection border
@@ -717,37 +764,126 @@ export const TextOverlayLayer: React.FC<TextOverlayLayerProps> = ({
                     transition: 'border-color 0.15s ease',
                 };
                 
-                // Add text outline
-                if (style.outline) {
-                    const outlineWidth = Math.min(style.outline.width, 1);
+                // Add text outline (only if enabled)
+                if (style.outline && style.outline.enabled !== false) {
+                    const outlineWidth = style.outline.width || 2;
                     textStyle.WebkitTextStroke = `${outlineWidth}px ${style.outline.color}`;
                     textStyle.paintOrder = 'stroke fill';
                 }
                 
-                // Add text shadow with blur support
-                if (style.shadow) {
+                // Add text shadow with blur and opacity support (only if enabled)
+                if (style.shadow && style.shadow.enabled !== false) {
                     const { shadow } = style;
                     const blur = shadow.blur || 0;
-                    textStyle.textShadow = `${shadow.position.x}px ${shadow.position.y}px ${blur}px ${shadow.color}`;
+                    const opacity = (shadow.opacity ?? 100) / 100;
+                    // Convert hex color to rgba for opacity support
+                    const hexToRgba = (hex: string, alpha: number): string => {
+                        const r = parseInt(hex.slice(1, 3), 16);
+                        const g = parseInt(hex.slice(3, 5), 16);
+                        const b = parseInt(hex.slice(5, 7), 16);
+                        return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+                    };
+                    const shadowColor = shadow.color.startsWith('#') ? hexToRgba(shadow.color, opacity) : shadow.color;
+                    textStyle.textShadow = `${shadow.position.x}px ${shadow.position.y}px ${blur}px ${shadowColor}`;
                 }
                 
-                // Background container style
-                const backgroundStyle: React.CSSProperties = style.background?.enabled || (style.background && style.background.color) ? {
+                // Background container style (only if enabled)
+                const showBackground = style.background?.enabled === true;
+                const backgroundStyle: React.CSSProperties = showBackground ? {
                     display: 'inline-block',
-                    backgroundColor: style.background.color,
-                    borderRadius: `${style.background.radius || style.background.borderRadius || 0}px`,
-                    padding: `${style.background.padding || 0}px`,
+                    backgroundColor: style.background!.color,
+                    opacity: (style.background!.opacity ?? 100) / 100,
+                    borderRadius: `${style.background!.radius || style.background!.borderRadius || 0}px`,
+                    padding: `${style.background!.padding || 0}%`,
                 } : {};
+
+                // Check if this element is currently being edited
+                const isCurrentlyEditing = isSelected && isEditing;
+
+                // Handle double-click to start editing
+                const handleDoubleClick = (e: React.MouseEvent) => {
+                    e.stopPropagation();
+                    e.preventDefault();
+                    if (isSelected && onTextContentChange) {
+                        setEditingContent(element.content);
+                        setIsEditing(true);
+                        // Focus the input after state update
+                        setTimeout(() => {
+                            editInputRef.current?.focus();
+                            editInputRef.current?.select();
+                        }, 10);
+                    }
+                };
+
+                // Handle finishing edit
+                const finishEditing = () => {
+                    if (isEditing && onTextContentChange) {
+                        const clipInfo = findElementClipInfo(element);
+                        if (clipInfo && editingContent !== element.content) {
+                            onTextContentChange(clipInfo.clipName, clipInfo.elementIndex, editingContent);
+                        }
+                    }
+                    setIsEditing(false);
+                };
+
+                // Handle key press in edit mode
+                const handleKeyDown = (e: React.KeyboardEvent) => {
+                    if (e.key === 'Enter' && !e.shiftKey) {
+                        e.preventDefault();
+                        finishEditing();
+                    } else if (e.key === 'Escape') {
+                        setIsEditing(false);
+                        setEditingContent(element.content);
+                    }
+                };
                 
                 return (
                     <div 
                         key={index} 
                         style={textStyle}
                         onClick={(e) => e.stopPropagation()}
-                        onMouseDown={(e) => handleElementMouseDown(e, element, index, isSelected)}
+                        onMouseDown={(e) => !isEditing && handleElementMouseDown(e, element, index, isSelected)}
+                        onDoubleClick={handleDoubleClick}
                     >
-                        {/* Text Content */}
-                        {style.background?.enabled || (style.background && style.background.color) ? (
+                        {/* Text Content or Edit Input */}
+                        {isCurrentlyEditing ? (
+                            <textarea
+                                ref={editInputRef}
+                                value={editingContent}
+                                onChange={(e) => {
+                                    setEditingContent(e.target.value);
+                                    // Update in real-time
+                                    if (onTextContentChange) {
+                                        const clipInfo = findElementClipInfo(element);
+                                        if (clipInfo) {
+                                            onTextContentChange(clipInfo.clipName, clipInfo.elementIndex, e.target.value);
+                                        }
+                                    }
+                                }}
+                                onBlur={() => setIsEditing(false)}
+                                onKeyDown={handleKeyDown}
+                                style={{
+                                    width: '100%',
+                                    height: '100%',
+                                    background: 'transparent',
+                                    border: 'none',
+                                    outline: 'none',
+                                    resize: 'none',
+                                    fontFamily: 'inherit',
+                                    fontSize: 'inherit',
+                                    fontWeight: 'inherit',
+                                    fontStyle: 'inherit',
+                                    textDecoration: 'inherit',
+                                    color: 'inherit',
+                                    textAlign: 'inherit',
+                                    lineHeight: 'inherit',
+                                    letterSpacing: 'inherit',
+                                    WebkitTextStroke: textStyle.WebkitTextStroke,
+                                    textShadow: textStyle.textShadow,
+                                }}
+                                className="placeholder-gray-400"
+                            />
+                        ) : showBackground ? (
                             <span style={backgroundStyle}>{element.content}</span>
                         ) : (
                             element.content

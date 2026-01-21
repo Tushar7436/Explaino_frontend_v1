@@ -8,11 +8,18 @@
  * The intro and outro are NEW clips (background only), not part of raw video
  */
 
+export interface MediaPosition {
+    x: number; // 0-100, 50 = centered
+    y: number; // 0-100, 50 = centered
+}
+
 export interface MediaItem {
     type: 'video' | 'image' | 'audio';
     format: string; // 'webm' | 'mp4' | 'mov' | 'jpg' | 'png' etc.
     url: string;
     borderRadius?: number;
+    scale?: number; // 10-150, default 85
+    position?: MediaPosition; // default {x: 50, y: 50} (centered)
 }
 
 export interface TimelineClip {
@@ -28,6 +35,7 @@ export interface TimelineClip {
 }
 
 export interface Timeline {
+    aspectRatio?: string; // '16:9' | '9:16' | '1:1' | '4:3' etc.
     videoDuration: number;
     clips: TimelineClip[];
 }
@@ -90,6 +98,38 @@ export function getClipBorderRadius(clip: TimelineClip | null): number {
     
     // Fallback to old structure
     return clip.borderRadius || 0;
+}
+
+/**
+ * Get scale from clip's first video media item
+ * Returns percentage value (10-150), default 85
+ */
+export function getClipScale(clip: TimelineClip | null): number {
+    if (!clip) return 85;
+    
+    if (clip.media && clip.media.length > 0) {
+        const videoMedia = clip.media.find(m => m.type === 'video');
+        return videoMedia?.scale ?? 85;
+    }
+    
+    return 85;
+}
+
+/**
+ * Get position from clip's first video media item
+ * Returns position object with x, y (0-100), default {x: 50, y: 50} (centered)
+ */
+export function getClipPosition(clip: TimelineClip | null): MediaPosition {
+    const defaultPosition: MediaPosition = { x: 50, y: 50 };
+    
+    if (!clip) return defaultPosition;
+    
+    if (clip.media && clip.media.length > 0) {
+        const videoMedia = clip.media.find(m => m.type === 'video');
+        return videoMedia?.position ?? defaultPosition;
+    }
+    
+    return defaultPosition;
 }
 
 /**

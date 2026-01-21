@@ -10,10 +10,13 @@ export type ChangeType =
   | 'borderRadius'
   | 'effect'
   | 'text'
+  | 'textElement'
   | 'textElementDuration'
   | 'textElementDelete'
   | 'narration'
   | 'aspectRatio'
+  | 'mediaScale'
+  | 'mediaPosition'
   | 'clip';
 
 export interface Change {

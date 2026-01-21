@@ -44,12 +44,16 @@ interface VideoLayerProps {
     hasMedia?: boolean;
     borderRadius?: number;
     isVideoSelected?: boolean;
+    // Scale props for drag-to-resize
+    currentScale?: number;
+    onScaleChange?: (scale: number, isComplete?: boolean) => void;
     // Text selection props
     selectedTextElement?: SelectedTextInfo | null;
     onTextSelect?: (clipName: string, elementIndex: number, element: TextElement) => void;
     onTextDeselect?: () => void;
     onTextMove?: (clipName: string, elementIndex: number, newX: number, newY: number) => void;
     onTextResize?: (clipName: string, elementIndex: number, newWidth: number, newHeight: number, resizeType?: 'horizontal' | 'diagonal') => void;
+    onTextContentChange?: (clipName: string, elementIndex: number, newContent: string) => void;
     displayElements?: any[];
 }
 
@@ -70,12 +74,16 @@ export const VideoLayer: React.FC<VideoLayerProps> = ({
     hasMedia = true,
     borderRadius = 3,
     isVideoSelected = false,
+    // Scale props for drag-to-resize
+    currentScale,
+    onScaleChange,
     // Text selection props
     selectedTextElement,
     onTextSelect,
     onTextDeselect,
     onTextMove,
     onTextResize,
+    onTextContentChange,
     displayElements = [],
 }) => {
     console.log('[VideoLayer] borderRadius:', borderRadius, 'isVideoSelected:', isVideoSelected);
@@ -217,6 +225,7 @@ export const VideoLayer: React.FC<VideoLayerProps> = ({
                 onTextDeselect={onTextDeselect}
                 onTextMove={onTextMove}
                 onTextResize={onTextResize}
+                onTextContentChange={onTextContentChange}
                 displayElements={displayElements}
             />
             
@@ -224,6 +233,8 @@ export const VideoLayer: React.FC<VideoLayerProps> = ({
             <VideoSelectionBorder 
                 isSelected={isVideoSelected} 
                 videoDimensions={videoDimensions}
+                currentScale={currentScale}
+                onScaleChange={onScaleChange}
             />
         </div>
     );

@@ -336,9 +336,9 @@ export const MainCanvasSection: React.FC<MainCanvasSectionProps> = ({
                             onUnderlineToggle={onTextUnderlineToggle || (() => {})}
                             onAlignChange={onTextAlignChange || (() => {})}
                             onDelete={onTextDelete || (() => {})}
-                            isBold={selectedTextElement.element?.style?.fontWeight === 'Bold'}
-                            isItalic={selectedTextElement.element?.style?.italic || false}
-                            isUnderline={selectedTextElement.element?.style?.underline || false}
+                            isBold={['Bold', 'SemiBold', 'ExtraBold', 'Black'].includes(selectedTextElement.element?.style?.fontWeight || '')}
+                            isItalic={selectedTextElement.element?.style?.fontStyle === 'italic'}
+                            isUnderline={selectedTextElement.element?.style?.textDecoration === 'underline'}
                             textAlign={selectedTextElement.element?.style?.textAlign || 'center'}
                         />
                     ) : isVideoSelected ? (
@@ -426,19 +426,35 @@ export const MainCanvasSection: React.FC<MainCanvasSectionProps> = ({
                             overflow: 'hidden',
                         }}
                     >
-                        {/* Video scales to fit inside with 85% sizing to show background border */}
-                        <div style={{ 
-                            maxWidth: '85%', 
-                            maxHeight: '85%', 
-                            width: '100%', 
-                            height: '100%', 
-                            display: 'flex', 
-                            alignItems: 'center', 
-                            justifyContent: 'center', 
-                            position: 'relative' 
-                        }}>
-                            {children}
-                        </div>
+                        {/* Video scales to fit inside - uses scale from media data (default 85%) */}
+                        {(() => {
+                            // Get scale from activeClip's first media item, default to 85
+                            const mediaScale = activeClip?.media?.[0]?.scale ?? 85;
+                            // For scale > 100%, we use transform scale to zoom in (and overflow:hidden clips it)
+                            // For scale <= 100%, we use max-width/max-height percentage
+                            const isZoomedIn = mediaScale > 100;
+                            const containerScale = isZoomedIn ? '100%' : `${mediaScale}%`;
+                            const transformScale = isZoomedIn ? mediaScale / 100 : 1;
+                            
+                            return (
+                                <div 
+                                    style={{ 
+                                        maxWidth: containerScale, 
+                                        maxHeight: containerScale, 
+                                        width: '100%', 
+                                        height: '100%', 
+                                        display: 'flex', 
+                                        alignItems: 'center', 
+                                        justifyContent: 'center', 
+                                        position: 'relative',
+                                        transform: isZoomedIn ? `scale(${transformScale})` : 'none',
+                                        transformOrigin: 'center center',
+                                    }}
+                                >
+                                    {children}
+                                </div>
+                            );
+                        })()}
 
                         {/* Generating Speech Overlay */}
                         {isGeneratingSpeech && (

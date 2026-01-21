@@ -318,12 +318,12 @@ export const TextEditToolbar: React.FC<TextEditToolbarProps> = ({
                         e.stopPropagation();
                         setIsColorPickerOpen(!isColorPickerOpen);
                     }}
-                    className="flex items-center gap-1.5 px-2 py-1.5 bg-[#3b3b50] hover:bg-[#4a4a5e] rounded-md transition-all duration-200"
+                    className="flex items-center gap-1.5 px-1.5 py-1.5 bg-[#3b3b50] hover:bg-[#4a4a5e] rounded-md transition-all duration-200"
                     title={`Text Color: ${textColor}`}
                 >
                     <div 
-                        className="w-5 h-5 rounded-full border-2 border-white/30"
-                        style={{ backgroundColor: textColor }}
+                        className="w-4 h-4 rounded-full border border-white/30 flex-shrink-0"
+                        style={{ backgroundColor: textColor, aspectRatio: '1 / 1' }}
                     />
                 </button>
                 

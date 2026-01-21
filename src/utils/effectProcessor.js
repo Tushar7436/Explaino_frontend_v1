@@ -327,14 +327,29 @@ export function computeEffectProgressWithContinuation(currentTime, start, end, e
 
 /**
  * Get active effects at current time
+ * Effects are only active within their own time range AND within their parent clip boundaries
  * @param {Array} effects - Array of effect objects
  * @param {number} currentTime - Current video time
  * @returns {Array} Active effects
  */
 export function getActiveEffects(effects, currentTime) {
-    return effects.filter(effect =>
-        currentTime >= effect.start && currentTime <= effect.end
-    );
+    return effects.filter(effect => {
+        // Basic time check: current time must be within effect's start/end range
+        if (currentTime < effect.start || currentTime > effect.end) {
+            return false;
+        }
+        
+        // If effect has clip boundaries defined, respect them
+        // This prevents effects from bleeding into intro/outro clips
+        if (effect.clipEnd !== undefined && currentTime > effect.clipEnd) {
+            return false;
+        }
+        if (effect.clipStart !== undefined && currentTime < effect.clipStart) {
+            return false;
+        }
+        
+        return true;
+    });
 }
 
 /**
