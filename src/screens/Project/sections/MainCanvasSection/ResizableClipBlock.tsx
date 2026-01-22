@@ -66,9 +66,14 @@ export const ResizableClipBlock: React.FC<ResizableClipBlockProps> = ({
             const timeAtMouse = mouseX / pixelsPerSecond;
 
             if (isResizing === 'left') {
-                // For left resize (shrinking from left)
-                // Intro: left edge fixed at 0, so this only applies to outro
-                // Outro: can shrink from left, but must end after video (prevClipEnd)
+                // For left resize
+                // Intro clip: start is fixed at 0, left handle shouldn't work
+                // Outro clip: can shrink from left, but must stay after video (prevClipEnd)
+                if (clipName === 'intro') {
+                    // Intro's left edge is fixed at 0, don't allow left resize
+                    return;
+                }
+                
                 const leftBound = prevClipEnd !== undefined ? prevClipEnd : 0;
                 const newStart = Math.max(leftBound, Math.min(timeAtMouse, end - minDuration));
                 
@@ -130,8 +135,8 @@ export const ResizableClipBlock: React.FC<ResizableClipBlockProps> = ({
             onMouseEnter={() => setIsHovered(true)}
             onMouseLeave={() => setIsHovered(false)}
         >
-            {/* Left resize handle - only for resizable clips */}
-            {isResizable && (
+            {/* Left resize handle - only for resizable clips, not for intro */}
+            {isResizable && clipName !== 'intro' && (
                 <div
                     data-resize-handle="left"
                     className="absolute left-0 top-0 bottom-0 w-2 cursor-ew-resize z-20 flex items-center justify-center"

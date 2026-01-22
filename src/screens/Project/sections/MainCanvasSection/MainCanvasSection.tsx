@@ -589,7 +589,7 @@ export const MainCanvasSection: React.FC<MainCanvasSectionProps> = ({
                         className="flex-1 bg-[#0d0d15] overflow-x-auto overflow-y-hidden flex flex-col"
                     >
                         {videoDuration > 0 ? (
-                            <div className="flex-1 flex flex-col relative overflow-visible" style={{ width: `${Math.max(videoDuration * pixelsPerSecond + 16, 800)}px`, minWidth: '100%' }}>
+                            <div className="flex-1 flex flex-col relative overflow-visible" style={{ width: `${Math.max(videoDuration * pixelsPerSecond, 800)}px`, minWidth: '100%' }}>
                                 {/* Global Playhead - spans entire timeline height, draggable */}
                                 <div
                                     className={`absolute top-0 bottom-0 w-px bg-pink-500 ${isDraggingPlayhead ? 'cursor-grabbing' : ''}`}
@@ -608,7 +608,7 @@ export const MainCanvasSection: React.FC<MainCanvasSectionProps> = ({
                                 </div>
 
                                 {/* Time Ruler */}
-                                <div className="sticky top-0 z-30 bg-[#1a1a2e] border-b border-[#2a2a3e] flex-shrink-0" style={{ paddingLeft: '8px' }}>
+                                <div className="sticky top-0 z-30 bg-[#1a1a2e] border-b border-[#2a2a3e] flex-shrink-0">
                                     <div className="relative h-5" style={{ width: `${videoDuration * pixelsPerSecond}px` }}>
                                         {Array.from({ length: Math.ceil(videoDuration / timeStep) + 1 }, (_, i) => {
                                             const time = i * timeStep;
@@ -634,9 +634,8 @@ export const MainCanvasSection: React.FC<MainCanvasSectionProps> = ({
                                 >
                                     {/* Upper Layers area - effects/elements, scrollable if many rows */}
                                     <div
-                                        className="absolute top-0 right-0 overflow-y-auto overflow-x-hidden bg-[#0d0d15]"
+                                        className="absolute top-0 left-0 right-0 overflow-y-auto overflow-x-hidden bg-[#0d0d15]"
                                         style={{
-                                            left: '8px',
                                             bottom: '36px',
                                             scrollbarWidth: 'thin',
                                             scrollbarColor: 'rgba(75, 85, 99, 0.5) transparent',
@@ -797,8 +796,8 @@ export const MainCanvasSection: React.FC<MainCanvasSectionProps> = ({
 
                                     {/* Fixed Bottom Layer: Clip Blocks - taller as the main base layer */}
                                     <div 
-                                        className="absolute right-0 bg-[#1e1e2e] border-t border-[#2a2a3e]/50 h-9"
-                                        style={{ pointerEvents: 'auto', zIndex: 50, bottom: '0px', left: '8px' }}
+                                        className="absolute left-0 right-0 bg-[#1e1e2e] border-t border-[#2a2a3e]/50 h-9"
+                                        style={{ pointerEvents: 'auto', zIndex: 50, bottom: '0px' }}
                                     >
                                         <div className="relative h-full" style={{ paddingTop: '2px' }}>
                                             {timeline && timeline.length > 0 ? timeline.map((clip, idx) => {
