@@ -183,9 +183,8 @@ export const VideoLayer: React.FC<VideoLayerProps> = ({
                 // GPU acceleration hints
                 willChange: 'transform',
                 backfaceVisibility: 'hidden',
-                // Transition is now managed dynamically in the rendering loop
-                // This will be overridden by the zoom transform when effects are active
-                transform: 'scale3d(1, 1, 1)',
+                // NOTE: Do NOT set transform here - it will be managed by JavaScript
+                // Setting inline transform causes React re-renders to overwrite JS-applied zoom effects
             }}
         >
             {videoUrl ? (

@@ -1,4 +1,4 @@
-import React, { useMemo, useEffect, useRef, memo } from 'react';
+import React, { useMemo, useEffect, useRef, memo, createContext, useContext } from 'react';
 import { Sparkles, MoreHorizontal } from 'lucide-react';
 
 interface WordTiming {
@@ -7,18 +7,92 @@ interface WordTiming {
     end: number;
 }
 
-// Word highlighter using direct DOM manipulation to avoid React re-renders
+// Context for time subscription - WordHighlighters subscribe to get notified of time changes
+interface TimeContextValue {
+    subscribe: (callback: (time: number) => void) => () => void;
+    getTime: () => number;
+}
+
+const TimeContext = createContext<TimeContextValue | null>(null);
+
+// Provider that manages time updates for word highlighters
+interface TimeProviderProps {
+    currentTimeRef: React.RefObject<number>;
+    isPlaying: boolean;
+    children: React.ReactNode;
+}
+
+const TimeProvider = memo<TimeProviderProps>(({ currentTimeRef, isPlaying, children }) => {
+    const subscribersRef = useRef<Set<(time: number) => void>>(new Set());
+    const rafIdRef = useRef<number>(0);
+    const lastTimeRef = useRef<number>(-1);
+    const isPlayingRef = useRef(isPlaying);
+    
+    // Keep isPlaying in ref to avoid effect restarts
+    useEffect(() => {
+        isPlayingRef.current = isPlaying;
+        // When playback state changes, do one immediate update
+        const currentTime = currentTimeRef.current ?? 0;
+        subscribersRef.current.forEach(callback => callback(currentTime));
+    }, [isPlaying, currentTimeRef]);
+    
+    useEffect(() => {
+        let isActive = true;
+        
+        const tick = () => {
+            if (!isActive) return;
+            
+            const currentTime = currentTimeRef.current ?? 0;
+            
+            // Only notify when time actually changes (with small threshold to avoid float issues)
+            if (Math.abs(currentTime - lastTimeRef.current) > 0.01) {
+                lastTimeRef.current = currentTime;
+                // Notify all subscribers with the new time
+                subscribersRef.current.forEach(callback => callback(currentTime));
+            }
+            
+            rafIdRef.current = requestAnimationFrame(tick);
+        };
+        
+        rafIdRef.current = requestAnimationFrame(tick);
+        
+        return () => {
+            isActive = false;
+            if (rafIdRef.current) {
+                cancelAnimationFrame(rafIdRef.current);
+            }
+        };
+    }, [currentTimeRef]);
+    
+    const contextValue = useMemo(() => ({
+        subscribe: (callback: (time: number) => void) => {
+            subscribersRef.current.add(callback);
+            // Immediately call with current time
+            callback(currentTimeRef.current ?? 0);
+            return () => subscribersRef.current.delete(callback);
+        },
+        getTime: () => currentTimeRef.current ?? 0
+    }), [currentTimeRef]);
+    
+    return (
+        <TimeContext.Provider value={contextValue}>
+            {children}
+        </TimeContext.Provider>
+    );
+});
+
+// Word highlighter - only updates when the highlighted word changes based on word timings
 interface WordHighlighterProps {
     text: string;
     words: WordTiming[];
-    currentTime: number;
 }
 
-const WordHighlighter: React.FC<WordHighlighterProps> = ({ text, words, currentTime }) => {
+const WordHighlighter = memo<WordHighlighterProps>(({ text, words }) => {
     const containerRef = useRef<HTMLSpanElement>(null);
-    const lastHighlightedRef = useRef<HTMLSpanElement | null>(null);
+    const lastHighlightedIndexRef = useRef<number>(-1);
+    const timeContext = useContext(TimeContext);
     
-    // Precompute word mappings once
+    // Precompute word mappings once and create a sorted list for binary search
     const wordMappings = useMemo(() => {
         const textWords = text.split(' ');
         return textWords.map((word, idx) => {
@@ -27,38 +101,48 @@ const WordHighlighter: React.FC<WordHighlighterProps> = ({ text, words, currentT
             return { word, wordData, idx };
         });
     }, [text, words]);
-
-    // Direct DOM manipulation for highlighting - no React state updates
+    
+    // Subscribe to time updates - only update DOM when highlighted word changes
     useEffect(() => {
-        if (!containerRef.current) return;
+        if (!timeContext) return;
         
-        const spans = containerRef.current.querySelectorAll('span[data-word-idx]');
-        let newHighlightedSpan: HTMLSpanElement | null = null;
+        const onTimeUpdate = (currentTime: number) => {
+            if (!containerRef.current) return;
+            
+            let newHighlightedIndex = -1;
+            
+            // Find which word should be highlighted based on its timing
+            for (let i = 0; i < wordMappings.length; i++) {
+                const { wordData } = wordMappings[i];
+                if (wordData && currentTime >= wordData.start && currentTime < wordData.end) {
+                    newHighlightedIndex = i;
+                    break;
+                }
+            }
+            
+            // Only update DOM if the highlighted word actually changed
+            if (newHighlightedIndex !== lastHighlightedIndexRef.current) {
+                const spans = containerRef.current.querySelectorAll('span[data-word-idx]');
+                
+                // Remove highlight from previous word
+                if (lastHighlightedIndexRef.current >= 0 && spans[lastHighlightedIndexRef.current]) {
+                    (spans[lastHighlightedIndexRef.current] as HTMLSpanElement).style.cssText = '';
+                }
+                
+                // Add highlight to new word
+                if (newHighlightedIndex >= 0 && spans[newHighlightedIndex]) {
+                    const span = spans[newHighlightedIndex] as HTMLSpanElement;
+                    span.style.cssText = 'color: white; background: rgba(99, 102, 241, 0.3); border-radius: 2px;';
+                }
+                
+                lastHighlightedIndexRef.current = newHighlightedIndex;
+            }
+        };
         
-        // Find which word should be highlighted
-        for (let i = 0; i < wordMappings.length; i++) {
-            const { wordData } = wordMappings[i];
-            if (wordData && currentTime >= wordData.start && currentTime < wordData.end) {
-                newHighlightedSpan = spans[i] as HTMLSpanElement;
-                break;
-            }
-        }
-        
-        // Only update DOM if the highlighted word changed
-        if (newHighlightedSpan !== lastHighlightedRef.current) {
-            // Remove highlight from previous word
-            if (lastHighlightedRef.current) {
-                lastHighlightedRef.current.className = 'text-gray-200';
-            }
-            // Add highlight to new word
-            if (newHighlightedSpan) {
-                newHighlightedSpan.className = 'text-white font-semibold bg-indigo-500/30 px-0.5 rounded';
-            }
-            lastHighlightedRef.current = newHighlightedSpan;
-        }
-    }, [currentTime, wordMappings]);
+        // Subscribe - this will immediately call onTimeUpdate with current time
+        return timeContext.subscribe(onTimeUpdate);
+    }, [timeContext, wordMappings]);
 
-    // Render once, then DOM manipulation handles updates
     return (
         <span ref={containerRef}>
             {wordMappings.map((mapping, idx) => (
@@ -72,7 +156,7 @@ const WordHighlighter: React.FC<WordHighlighterProps> = ({ text, words, currentT
             {' '}
         </span>
     );
-};
+});
 
 interface Narration {
     start: number;
@@ -101,12 +185,40 @@ interface TranscriptionSectionProps {
     isGenerating: boolean;
     isRewriting?: boolean; // AI Rewrite loading state
     hasProcessedAudio: boolean;
-    currentTime?: number;
+    currentTimeRef: React.RefObject<number>; // Ref for jitter-free highlighting
+    isPlaying: boolean; // Playback state for RAF loop
     intro?: string; // Intro text from instructions
     outro?: string; // Outro text from instructions
 }
 
-export const TranscriptionSection: React.FC<TranscriptionSectionProps> = ({
+// Script card component - defined outside to prevent recreation
+const ScriptCard: React.FC<{
+    number: number;
+    title: string;
+    children: React.ReactNode;
+}> = memo(({ number, title, children }) => (
+    <div className="rounded-xl border border-white/5 bg-gradient-to-b from-white/[0.03] to-transparent overflow-hidden transition-all duration-200 hover:border-white/10 hover:bg-white/[0.04] group">
+        {/* Card Header */}
+        <div className="px-4 py-3 flex items-center justify-between border-b border-white/5">
+            <div className="flex items-center gap-3">
+                <span className="flex items-center justify-center w-6 h-6 rounded-lg bg-white/5 text-gray-400 text-xs font-medium">
+                    {number}
+                </span>
+                <span className="text-white text-sm font-medium">{title}</span>
+            </div>
+            <button className="p-1 rounded-md text-gray-400 hover:text-white hover:bg-white/10 transition-all opacity-0 group-hover:opacity-100">
+                <MoreHorizontal size={14} />
+            </button>
+        </div>
+        {/* Card Content */}
+        <div className="px-4 py-3">
+            {children}
+        </div>
+    </div>
+));
+
+// Memoized TranscriptionSection to prevent re-renders from parent's currentTime state updates
+export const TranscriptionSection = memo<TranscriptionSectionProps>(({
     narrations,
     isVisible,
     onClose,
@@ -116,7 +228,8 @@ export const TranscriptionSection: React.FC<TranscriptionSectionProps> = ({
     isGenerating,
     isRewriting = false,
     hasProcessedAudio,
-    currentTime = 0,
+    currentTimeRef,
+    isPlaying,
     intro,
     outro
 }) => {
@@ -125,18 +238,13 @@ export const TranscriptionSection: React.FC<TranscriptionSectionProps> = ({
     // Detect if narrations are clip-based or flat
     const isClipBased = narrations.length > 0 && 'clipName' in narrations[0];
     
-    // Extract clips if clip-based
+    // Extract clips if clip-based - supports any number of clips dynamically
     const clips: { name: string; narrations: Narration[] }[] = isClipBased 
         ? (narrations as ClipNarration[]).map(clip => ({
             name: clip.clipName,
             narrations: clip.narrations || []
           }))
         : [{ name: 'video', narrations: narrations as Narration[] }];
-
-    // Find intro, video, outro clips
-    const introClip = clips.find(c => c.name === 'intro');
-    const videoClip = clips.find(c => c.name === 'video');
-    const outroClip = clips.find(c => c.name === 'outro');
 
     // Helper to render narrations for a clip
     const renderNarrations = (clipNarrations: Narration[], _clipName: string, clipIndex: number, clipText?: string) => {
@@ -188,7 +296,6 @@ export const TranscriptionSection: React.FC<TranscriptionSectionProps> = ({
                                 <WordHighlighter 
                                     text={narration.text} 
                                     words={narration.words} 
-                                    currentTime={currentTime} 
                                 />
                             ) : (
                                 <span className="text-gray-200">
@@ -202,34 +309,9 @@ export const TranscriptionSection: React.FC<TranscriptionSectionProps> = ({
         );
     };
 
-    // Script card component
-    const ScriptCard: React.FC<{
-        number: number;
-        title: string;
-        children: React.ReactNode;
-    }> = ({ number, title, children }) => (
-        <div className="rounded-xl border border-white/5 bg-gradient-to-b from-white/[0.03] to-transparent overflow-hidden transition-all duration-200 hover:border-white/10 hover:bg-white/[0.04] group">
-            {/* Card Header */}
-            <div className="px-4 py-3 flex items-center justify-between border-b border-white/5">
-                <div className="flex items-center gap-3">
-                    <span className="flex items-center justify-center w-6 h-6 rounded-lg bg-white/5 text-gray-400 text-xs font-medium">
-                        {number}
-                    </span>
-                    <span className="text-white text-sm font-medium">{title}</span>
-                </div>
-                <button className="p-1 rounded-md text-gray-400 hover:text-white hover:bg-white/10 transition-all opacity-0 group-hover:opacity-100">
-                    <MoreHorizontal size={14} />
-                </button>
-            </div>
-            {/* Card Content */}
-            <div className="px-4 py-3">
-                {children}
-            </div>
-        </div>
-    );
-
     return (
-        <div className="w-[360px] bg-gradient-to-b from-[#1e1e2e] to-[#1a1a28] border-r border-white/5 flex flex-col">
+        <TimeProvider currentTimeRef={currentTimeRef} isPlaying={isPlaying}>
+            <div className="w-[360px] bg-gradient-to-b from-[#1e1e2e] to-[#1a1a28] border-r border-white/5 flex flex-col">
             {/* Header with collapse button */}
             <div className="px-4 py-3 flex items-center justify-between border-b border-white/5">
                 <button 
@@ -306,32 +388,45 @@ export const TranscriptionSection: React.FC<TranscriptionSectionProps> = ({
                 </div>
             </div>
 
-            {/* Content - Script Cards */}
+            {/* Content - Script Cards - Dynamic clip rendering */}
             <div className="flex-1 overflow-y-auto px-3 py-3 space-y-3 scrollbar-thin scrollbar-thumb-white/10 scrollbar-track-transparent">
-                {/* Intro Card */}
-                <ScriptCard number={1} title="Intro">
-                    {renderNarrations(introClip?.narrations || [], 'intro', 0, intro)}
-                </ScriptCard>
-
-                {/* Video Card */}
-                <ScriptCard number={2} title="Video">
-                    {!videoClip || videoClip.narrations.length === 0 ? (
-                        <div className="text-center text-gray-500 py-4">
-                            <p className="text-sm">No script content yet.</p>
-                            <p className="text-xs mt-1 text-gray-600">Process the video to generate narrations.</p>
-                        </div>
-                    ) : (
-                        renderNarrations(videoClip.narrations, 'video', 1)
-                    )}
-                </ScriptCard>
-
-                {/* Outro Card */}
-                <ScriptCard number={3} title="Outro">
-                    {renderNarrations(outroClip?.narrations || [], 'outro', 2, outro)}
-                </ScriptCard>
+                {clips.map((clip, index) => {
+                    // Get fallback text for intro/outro
+                    const fallbackText = clip.name === 'intro' ? intro : clip.name === 'outro' ? outro : undefined;
+                    // Capitalize clip name for display
+                    const displayName = clip.name.charAt(0).toUpperCase() + clip.name.slice(1);
+                    
+                    return (
+                        <ScriptCard key={clip.name} number={index + 1} title={displayName}>
+                            {clip.name === 'video' && clip.narrations.length === 0 ? (
+                                <div className="text-center text-gray-500 py-4">
+                                    <p className="text-sm">No script content yet.</p>
+                                    <p className="text-xs mt-1 text-gray-600">Process the video to generate narrations.</p>
+                                </div>
+                            ) : (
+                                renderNarrations(clip.narrations, clip.name, index, fallbackText)
+                            )}
+                        </ScriptCard>
+                    );
+                })}
             </div>
-        </div>
+            </div>
+        </TimeProvider>
     );
-};
+}, (prevProps, nextProps) => {
+    // Custom comparator - only re-render when these specific props change
+    // Ignore callback function references (they're stable in behavior even if reference changes)
+    return (
+        prevProps.narrations === nextProps.narrations &&
+        prevProps.isVisible === nextProps.isVisible &&
+        prevProps.isGenerating === nextProps.isGenerating &&
+        prevProps.isRewriting === nextProps.isRewriting &&
+        prevProps.hasProcessedAudio === nextProps.hasProcessedAudio &&
+        prevProps.isPlaying === nextProps.isPlaying &&
+        prevProps.intro === nextProps.intro &&
+        prevProps.outro === nextProps.outro &&
+        prevProps.currentTimeRef === nextProps.currentTimeRef
+    );
+});
 
 export default TranscriptionSection;

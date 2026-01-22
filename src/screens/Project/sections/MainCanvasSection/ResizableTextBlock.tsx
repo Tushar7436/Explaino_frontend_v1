@@ -16,7 +16,7 @@ interface ResizableTextBlockProps {
     isExternallySelected?: boolean; // External selection state from parent
     onResize: (clipName: string, elementIndex: number, newStart: number, newEnd: number) => void;
     onDelete: (clipName: string, elementIndex: number) => void;
-    onClick?: (clipName: string, elementIndex: number) => void; // Click handler for selection
+    onClick?: (clipName: string, elementIndex: number, clickedTime?: number) => void; // Click handler for selection, with optional clicked time
 }
 
 export const ResizableTextBlock: React.FC<ResizableTextBlockProps> = ({
@@ -96,11 +96,24 @@ export const ResizableTextBlock: React.FC<ResizableTextBlockProps> = ({
         onClick?.(clipName, elementIndex); // Notify parent of selection
     }, [start, end, onClick, clipName, elementIndex]);
 
-    // Handle block click (select)
+    // Handle block click (select and seek to clicked position)
     const handleBlockClick = useCallback((e: React.MouseEvent) => {
         e.stopPropagation();
-        onClick?.(clipName, elementIndex); // Notify parent of selection
-    }, [onClick, clipName, elementIndex]);
+        
+        // Calculate the time at the clicked position
+        const timelineContainer = blockRef.current?.closest('[class*="overflow-x-auto"]');
+        if (timelineContainer) {
+            const containerRect = timelineContainer.getBoundingClientRect();
+            const scrollLeft = timelineContainer.scrollLeft;
+            const mouseX = e.clientX - containerRect.left + scrollLeft;
+            const clickedTime = mouseX / pixelsPerSecond;
+            // Clamp to element bounds
+            const clampedTime = Math.max(start, Math.min(clickedTime, end));
+            onClick?.(clipName, elementIndex, clampedTime);
+        } else {
+            onClick?.(clipName, elementIndex, start);
+        }
+    }, [onClick, clipName, elementIndex, pixelsPerSecond, start, end]);
 
     // Handle drag/resize move
     React.useEffect(() => {

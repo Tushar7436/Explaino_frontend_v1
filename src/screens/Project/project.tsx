@@ -9,6 +9,7 @@ import { MusicSection } from './sections/MusicSection';
 import { MainCanvasSection, AspectRatio } from './sections/MainCanvasSection';
 import { VideoLayer, VideoControls } from './sections/VideoPlayerSection';
 import { TextEditPanel } from './sections/TextEditPanel';
+import { ZoomEditPanel } from './sections/ZoomEditPanel';
 import { MediaBarSection } from './sections/MediaBarSection';
 
 // Services & Hooks
@@ -28,7 +29,6 @@ import {
     getActiveClip,
     isVideoVisible,
     timelineToVideoTime,
-    videoTimeToTimelineTime,
     getTimelineDuration,
     getPlaybackMode,
     type TimelineClip
@@ -59,20 +59,28 @@ export const ProjectScreen: React.FC<ProjectScreenProps> = ({ sessionId }) => {
     const CDN_BASE = 'https://cdn.vocallabs.ai';
     const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:8000';
 
-    // Helper to convert S3 paths to CDN URLs
-    const formatCdnUrl = (url: string | null | undefined): string | null => {
+    // Helper to convert S3 paths to CDN URLs with optional cache-busting
+    const formatCdnUrl = (url: string | null | undefined, cacheBuster?: number): string | null => {
         if (!url) return null;
 
-        // If already a full URL, return as-is
+        let fullUrl: string;
+
+        // If already a full URL, use as-is
         if (url.startsWith('http://') || url.startsWith('https://')) {
-            return url;
+            fullUrl = url;
+        } else {
+            // Remove leading slash if present
+            const path = url.startsWith('/') ? url.slice(1) : url;
+            fullUrl = `${CDN_BASE}/${path}`;
         }
 
-        // Remove leading slash if present
-        const path = url.startsWith('/') ? url.slice(1) : url;
+        // Add cache-busting query parameter if provided
+        if (cacheBuster) {
+            const separator = fullUrl.includes('?') ? '&' : '?';
+            return `${fullUrl}${separator}v=${cacheBuster}`;
+        }
 
-        // Return CDN URL
-        return `${CDN_BASE}/${path}`;
+        return fullUrl;
     };
 
     // ============== UI STATE ==============
@@ -92,18 +100,15 @@ export const ProjectScreen: React.FC<ProjectScreenProps> = ({ sessionId }) => {
     const [isMuted, setIsMuted] = useState(false);
 
     // ============== CLIP-BASED AUDIO ==============
-    const [clipAudioUrls, setClipAudioUrls] = useState<{
-        intro: string | null;
-        video: string | null;
-        outro: string | null;
-    }>({ intro: null, video: null, outro: null });
+    // Dynamic clip audio URLs - supports any number of clips
+    const [clipAudioUrls, setClipAudioUrls] = useState<Record<string, string | null>>({});
     const [currentClipAudio, setCurrentClipAudio] = useState<string | null>(null);
     const [hasSpeechGenerated, setHasSpeechGenerated] = useState(false);
 
     // Reset audio state when sessionId changes (new session)
     useEffect(() => {
         setHasSpeechGenerated(false);
-        setClipAudioUrls({ intro: null, video: null, outro: null });
+        setClipAudioUrls({});
         setCurrentClipAudio(null);
         setIsVideoSelected(false); // Reset selection on new session
     }, [sessionId]);
@@ -157,6 +162,15 @@ export const ProjectScreen: React.FC<ProjectScreenProps> = ({ sessionId }) => {
         element: any;
     } | null>(null);
     const [isTextEditPanelOpen, setIsTextEditPanelOpen] = useState(false);
+
+    // ============== ZOOM EFFECT SELECTION STATE ==============
+    const [isZoomSelected, setIsZoomSelected] = useState(false);
+    const [selectedZoomEffect, setSelectedZoomEffect] = useState<{
+        clipName: string;
+        effectIndex: number;
+        effect: any;
+    } | null>(null);
+    const [isZoomEditPanelOpen, setIsZoomEditPanelOpen] = useState(false);
 
     // Check if current active clip has media (video/image)
     const currentClipHasMedia = activeClip?.media && activeClip.media.length > 0;
@@ -446,6 +460,391 @@ export const ProjectScreen: React.FC<ProjectScreenProps> = ({ sessionId }) => {
         setActiveSidebarItem('script');
     }, []);
 
+    // ============== ZOOM EFFECT SELECTION HANDLERS ==============
+    const handleZoomSelect = useCallback((clipName: string, effectIndex: number, effect: any) => {
+        console.log('[handleZoomSelect] Selected zoom effect:', { clipName, effectIndex, effect });
+        setSelectedZoomEffect({ clipName, effectIndex, effect });
+        setIsZoomSelected(true);
+        setIsVideoSelected(false); // Deselect video when zoom is selected
+        setIsTextSelected(false); // Deselect text when zoom is selected
+        setIsTextEditPanelOpen(false);
+        setIsZoomEditPanelOpen(true);
+        setActiveSidebarItem('elements'); // Highlight Elements in sidebar
+    }, []);
+
+    const handleZoomDeselect = useCallback(() => {
+        console.log('[handleZoomDeselect] Deselecting zoom effect');
+        setSelectedZoomEffect(null);
+        setIsZoomSelected(false);
+        setIsZoomEditPanelOpen(false);
+        setActiveSidebarItem('script'); // Return to script panel
+    }, []);
+
+    const handleZoomEffectUpdate = useCallback((updates: Partial<{
+        scale: number;
+        start: number;
+        end: number;
+        target: { bounds: { x: number; y: number; width: number; height: number } };
+    }>) => {
+        if (!selectedZoomEffect || !results?.displayElements) return;
+
+        const { clipName, effectIndex } = selectedZoomEffect;
+        
+        // Get old effect for change tracking
+        const clip = results.displayElements.find((c: any) => c.clipName === clipName);
+        const oldEffect = clip?.effects?.[effectIndex];
+
+        // Track change for undo/redo on final release
+        trackChange({
+            type: 'effect',
+            clipName,
+            path: `displayElements.${clipName}.effects[${effectIndex}]`,
+            oldValue: oldEffect,
+            newValue: { ...oldEffect, ...updates }
+        });
+
+        setResults((prev: any) => {
+            if (!prev?.displayElements) return prev;
+
+            const updatedDisplayElements = prev.displayElements.map((clip: any) => {
+                if (clip.clipName !== clipName) return clip;
+
+                const updatedEffects = [...(clip.effects || [])];
+                if (effectIndex >= 0 && effectIndex < updatedEffects.length) {
+                    const currentEffect = updatedEffects[effectIndex];
+                    
+                    // Validate start/end don't exceed clip boundaries
+                    let newStart = updates.start ?? currentEffect.start;
+                    let newEnd = updates.end ?? currentEffect.end;
+                    
+                    // Clamp to clip boundaries
+                    newStart = Math.max(clip.clipStart, Math.min(newStart, clip.clipEnd));
+                    newEnd = Math.max(clip.clipStart, Math.min(newEnd, clip.clipEnd));
+                    
+                    // Ensure start < end
+                    if (newStart >= newEnd) {
+                        newEnd = newStart + 0.5; // Minimum 0.5s duration
+                    }
+
+                    updatedEffects[effectIndex] = {
+                        ...currentEffect,
+                        ...updates,
+                        start: newStart,
+                        end: newEnd,
+                        target: updates.target ? {
+                            ...currentEffect.target,
+                            bounds: {
+                                ...currentEffect.target?.bounds,
+                                ...updates.target.bounds
+                            }
+                        } : currentEffect.target
+                    };
+                }
+
+                return { ...clip, effects: updatedEffects };
+            });
+
+            return { ...prev, displayElements: updatedDisplayElements };
+        });
+
+        // Update selectedZoomEffect with the new values
+        setSelectedZoomEffect(prev => prev ? {
+            ...prev,
+            effect: {
+                ...prev.effect,
+                ...updates,
+                target: updates.target ? {
+                    ...prev.effect.target,
+                    bounds: {
+                        ...prev.effect.target?.bounds,
+                        ...updates.target.bounds
+                    }
+                } : prev.effect.target
+            }
+        } : null);
+
+        console.log('[handleZoomEffectUpdate] Updated zoom effect:', updates);
+    }, [selectedZoomEffect, results, setResults, trackChange]);
+
+    // Real-time preview without change tracking (for drag/slide during interaction)
+    const handleZoomEffectPreview = useCallback((updates: Partial<{
+        scale: number;
+        start: number;
+        end: number;
+        target: { bounds: { x: number; y: number; width: number; height: number } };
+    }>) => {
+        if (!selectedZoomEffect || !results?.displayElements) return;
+
+        const { clipName, effectIndex } = selectedZoomEffect;
+
+        setResults((prev: any) => {
+            if (!prev?.displayElements) return prev;
+
+            const updatedDisplayElements = prev.displayElements.map((clip: any) => {
+                if (clip.clipName !== clipName) return clip;
+
+                const updatedEffects = [...(clip.effects || [])];
+                if (effectIndex >= 0 && effectIndex < updatedEffects.length) {
+                    const currentEffect = updatedEffects[effectIndex];
+                    
+                    // Validate start/end don't exceed clip boundaries
+                    let newStart = updates.start ?? currentEffect.start;
+                    let newEnd = updates.end ?? currentEffect.end;
+                    
+                    // Clamp to clip boundaries
+                    newStart = Math.max(clip.clipStart, Math.min(newStart, clip.clipEnd));
+                    newEnd = Math.max(clip.clipStart, Math.min(newEnd, clip.clipEnd));
+                    
+                    // Ensure start < end
+                    if (newStart >= newEnd) {
+                        newEnd = newStart + 0.5; // Minimum 0.5s duration
+                    }
+
+                    updatedEffects[effectIndex] = {
+                        ...currentEffect,
+                        ...updates,
+                        start: newStart,
+                        end: newEnd,
+                        target: updates.target ? {
+                            ...currentEffect.target,
+                            bounds: {
+                                ...currentEffect.target?.bounds,
+                                ...updates.target.bounds
+                            }
+                        } : currentEffect.target
+                    };
+                }
+
+                return { ...clip, effects: updatedEffects };
+            });
+
+            return { ...prev, displayElements: updatedDisplayElements };
+        });
+
+        // Update selectedZoomEffect with the new values (for preview)
+        setSelectedZoomEffect(prev => prev ? {
+            ...prev,
+            effect: {
+                ...prev.effect,
+                ...updates,
+                target: updates.target ? {
+                    ...prev.effect.target,
+                    bounds: {
+                        ...prev.effect.target?.bounds,
+                        ...updates.target.bounds
+                    }
+                } : prev.effect.target
+            }
+        } : null);
+    }, [selectedZoomEffect, results, setResults]);
+
+    const handleZoomEffectDelete = useCallback(() => {
+        if (!selectedZoomEffect || !results?.displayElements) return;
+
+        const { clipName, effectIndex } = selectedZoomEffect;
+
+        setResults((prev: any) => {
+            if (!prev?.displayElements) return prev;
+
+            const updatedDisplayElements = prev.displayElements.map((clip: any) => {
+                if (clip.clipName !== clipName) return clip;
+
+                const updatedEffects = [...(clip.effects || [])];
+                updatedEffects.splice(effectIndex, 1);
+
+                return { ...clip, effects: updatedEffects };
+            });
+
+            return { ...prev, displayElements: updatedDisplayElements };
+        });
+
+        handleZoomDeselect();
+        console.log('[handleZoomEffectDelete] Deleted zoom effect');
+    }, [selectedZoomEffect, results, setResults, handleZoomDeselect]);
+
+    // Handler for resizing zoom effects from timeline
+    const handleZoomResize = useCallback((clipName: string, effectIndex: number, newStart: number, newEnd: number) => {
+        if (!results?.displayElements) return;
+
+        setResults((prev: any) => {
+            if (!prev?.displayElements) return prev;
+
+            const updatedDisplayElements = prev.displayElements.map((clip: any) => {
+                if (clip.clipName !== clipName) return clip;
+
+                const updatedEffects = [...(clip.effects || [])];
+                if (effectIndex >= 0 && effectIndex < updatedEffects.length) {
+                    updatedEffects[effectIndex] = {
+                        ...updatedEffects[effectIndex],
+                        start: newStart,
+                        end: newEnd,
+                    };
+                }
+
+                return { ...clip, effects: updatedEffects };
+            });
+
+            return { ...prev, displayElements: updatedDisplayElements };
+        });
+
+        // Update selected zoom effect if it's the one being resized
+        if (selectedZoomEffect?.clipName === clipName && selectedZoomEffect?.effectIndex === effectIndex) {
+            setSelectedZoomEffect(prev => prev ? {
+                ...prev,
+                effect: { ...prev.effect, start: newStart, end: newEnd }
+            } : null);
+        }
+    }, [results, selectedZoomEffect]);
+
+    // Handler for resizing clips (intro/outro) from timeline
+    // When shrinking a clip:
+    // 1. Clamp any effects/elements on THAT SPECIFIC clip to fit within new bounds
+    // 2. Shift adjacent clips to maintain continuity (no gaps)
+    // 3. Update clipStart/clipEnd for ALL shifted clips in displayElements
+    const handleClipResize = useCallback((clipName: string, newStart: number, newEnd: number) => {
+        if (!results?.timeline?.clips) return;
+
+        setResults((prev: any) => {
+            if (!prev?.timeline?.clips) return prev;
+
+            // Sort clips by start time to ensure proper order
+            const sortedClips = [...prev.timeline.clips].sort((a: any, b: any) => a.start - b.start);
+            
+            // Find the clip being resized
+            const clipIndex = sortedClips.findIndex((c: any) => c.name === clipName);
+            if (clipIndex === -1) return prev;
+
+            const oldClip = sortedClips[clipIndex];
+            const newDuration = newEnd - newStart;
+
+            // Update the resized clip
+            const updatedClips = [...sortedClips];
+            updatedClips[clipIndex] = { ...oldClip, start: newStart, end: newEnd };
+
+            // Shift subsequent clips to maintain continuity
+            // If clip shrinks, move next clips earlier; if expands, move later
+            for (let i = clipIndex + 1; i < updatedClips.length; i++) {
+                const clip = updatedClips[i];
+                const clipDuration = clip.end - clip.start;
+                const newClipStart = updatedClips[i - 1].end;
+                updatedClips[i] = {
+                    ...clip,
+                    start: newClipStart,
+                    end: newClipStart + clipDuration
+                };
+            }
+
+            // Build a map of clip name -> new clip boundaries
+            const clipBoundariesMap: Record<string, { start: number; end: number }> = {};
+            for (const clip of updatedClips) {
+                clipBoundariesMap[clip.name] = { start: clip.start, end: clip.end };
+            }
+            
+            console.log('[handleClipResize] Clip boundaries map:', clipBoundariesMap);
+            console.log('[handleClipResize] DisplayElements before update:', prev.displayElements);
+
+            // Update ALL displayElements with new clipStart/clipEnd
+            // For resized clip: clamp effects/elements
+            // For shifted clips: shift effects/elements by the same delta
+            let updatedDisplayElements = prev.displayElements;
+            if (prev.displayElements) {
+                updatedDisplayElements = prev.displayElements.map((displayClip: any) => {
+                    const newBounds = clipBoundariesMap[displayClip.clipName];
+                    console.log(`[handleClipResize] Processing displayClip: ${displayClip.clipName}, newBounds:`, newBounds);
+                    if (!newBounds) return displayClip;
+
+                    const oldClipStart = displayClip.clipStart || 0;
+                    const shiftDelta = newBounds.start - oldClipStart;
+
+                    // Update clipStart and clipEnd for ALL clips (for proper timeline positioning)
+                    let updatedClip = {
+                        ...displayClip,
+                        clipStart: newBounds.start,
+                        clipEnd: newBounds.end
+                    };
+
+                    // For the RESIZED clip: clamp effects/elements to new duration
+                    if (displayClip.clipName === clipName) {
+                        // Clamp effects to fit within new clip bounds
+                        const clampedEffects = (displayClip.effects || []).map((effect: any) => {
+                            const effectDuration = effect.end - effect.start;
+                            let newEffectStart = Math.max(newBounds.start, Math.min(effect.start, newBounds.end - 0.1));
+                            let newEffectEnd = Math.min(newBounds.end, Math.max(newEffectStart + 0.1, effect.end));
+                            
+                            if (newEffectEnd > newBounds.end) {
+                                newEffectEnd = newBounds.end;
+                                newEffectStart = Math.max(newBounds.start, newEffectEnd - effectDuration);
+                            }
+
+                            return { ...effect, start: newEffectStart, end: newEffectEnd };
+                        }).filter((effect: any) => effect.start < effect.end);
+
+                        // Clamp elements to fit within new clip bounds
+                        const clampedElements = (displayClip.elements || []).map((element: any) => {
+                            const elemDuration = element.end - element.start;
+                            let newElemStart = Math.max(newBounds.start, Math.min(element.start, newBounds.end - 0.1));
+                            let newElemEnd = Math.min(newBounds.end, Math.max(newElemStart + 0.1, element.end));
+                            
+                            if (newElemEnd > newBounds.end) {
+                                newElemEnd = newBounds.end;
+                                newElemStart = Math.max(newBounds.start, newElemEnd - elemDuration);
+                            }
+
+                            return { ...element, start: newElemStart, end: newElemEnd };
+                        }).filter((element: any) => element.start < element.end);
+
+                        updatedClip = {
+                            ...updatedClip,
+                            effects: clampedEffects,
+                            elements: clampedElements
+                        };
+                    } else if (shiftDelta !== 0) {
+                        // For OTHER clips that shifted: shift effects/elements by the delta
+                        console.log(`[handleClipResize] Shifting ${displayClip.clipName} effects/elements by ${shiftDelta}s`);
+                        
+                        const shiftedEffects = (displayClip.effects || []).map((effect: any) => ({
+                            ...effect,
+                            start: effect.start + shiftDelta,
+                            end: effect.end + shiftDelta
+                        }));
+
+                        const shiftedElements = (displayClip.elements || []).map((element: any) => ({
+                            ...element,
+                            start: element.start + shiftDelta,
+                            end: element.end + shiftDelta
+                        }));
+
+                        updatedClip = {
+                            ...updatedClip,
+                            effects: shiftedEffects,
+                            elements: shiftedElements
+                        };
+                    }
+
+                    return updatedClip;
+                });
+                
+                console.log('[handleClipResize] DisplayElements after update:', updatedDisplayElements);
+            }
+
+            // Calculate new total duration
+            const lastClip = updatedClips[updatedClips.length - 1];
+            const newTotalDuration = lastClip.end;
+
+            console.log(`[handleClipResize] Resized ${clipName}: ${newStart.toFixed(2)}s - ${newEnd.toFixed(2)}s, total duration: ${newTotalDuration.toFixed(2)}s`);
+            console.log('[handleClipResize] Updated clips:', updatedClips);
+
+            return { 
+                ...prev, 
+                timeline: { 
+                    ...prev.timeline, 
+                    clips: updatedClips 
+                },
+                displayElements: updatedDisplayElements
+            };
+        });
+    }, [results]);
+
     // Click outside detection to deselect text elements
     // Deselect when clicking anywhere except:
     // - Textbox block in timeline track (has data-text-block)
@@ -486,6 +885,38 @@ export const ProjectScreen: React.FC<ProjectScreenProps> = ({ sessionId }) => {
             document.removeEventListener('click', handleGlobalClick);
         };
     }, [isTextSelected, handleTextDeselect]);
+
+    // Click outside detection to deselect zoom effects
+    useEffect(() => {
+        if (!isZoomSelected) return;
+
+        const handleGlobalClick = (e: MouseEvent) => {
+            const target = e.target as HTMLElement;
+
+            // Check if clicking on allowed elements
+            const isAllowed =
+                target.closest('[data-zoom-edit-panel]') ||
+                target.closest('[data-zoom-block]') ||
+                target.closest('[data-play-pause]') ||
+                target.closest('[data-color-picker]') ||
+                target.closest('[data-sidebar-elements]');
+
+            if (!isAllowed) {
+                console.log('[Click Outside] Deselecting zoom effect');
+                handleZoomDeselect();
+            }
+        };
+
+        // Use setTimeout to allow click events to propagate first
+        const timeoutId = setTimeout(() => {
+            document.addEventListener('click', handleGlobalClick);
+        }, 100);
+
+        return () => {
+            clearTimeout(timeoutId);
+            document.removeEventListener('click', handleGlobalClick);
+        };
+    }, [isZoomSelected, handleZoomDeselect]);
 
     const handleTextMove = useCallback((clipName: string, elementIndex: number, newX: number, newY: number) => {
         if (!results?.displayElements) return;
@@ -845,59 +1276,22 @@ export const ProjectScreen: React.FC<ProjectScreenProps> = ({ sessionId }) => {
         }
     }, [results, currentTime]); // Trigger when results change (after merge)
 
-    // Update current clip audio when active clip changes
+    // Track current clip audio URL in state (unified RAF loop handles actual playback)
     useEffect(() => {
         if (!activeClip) return;
 
-        const clipName = activeClip.name as 'intro' | 'video' | 'outro';
-        const audioUrl = clipAudioUrls[clipName];
+        const clipName = activeClip.name;
+        const audioUrl = clipAudioUrls[clipName] || null;
 
-        const audio = aiAudioRef.current;
-        if (!audio) return;
-
-        // Always update audio when clip changes or URL changes
-        const needsUpdate = audioUrl !== currentClipAudio || audio.src !== audioUrl;
-
-        if (needsUpdate) {
-            console.log(`[Audio] Loading ${clipName} clip audio:`, audioUrl);
-
-            // Pause and clear current audio
-            audio.pause();
-            audio.currentTime = 0;
-
-            if (audioUrl) {
-                // Set new audio source
-                audio.src = audioUrl;
-                setCurrentClipAudio(audioUrl);
-
-                // Add error handler
-                audio.onerror = (e) => {
-                    console.error(`[Audio] Error loading ${clipName} audio:`, e);
-                    console.error('[Audio] Failed URL:', audioUrl);
-                    console.error('[Audio] Speech generated:', hasSpeechGenerated);
-                };
-
-                // Add loaded handler
-                audio.onloadeddata = () => {
-                    console.log(`[Audio] ${clipName} audio loaded, duration:`, audio.duration, 'ready to play');
-
-                    // If playing, seek to correct time and play
-                    if (isPlaying && results?.timeline) {
-                        const clipRelativeTime = Math.max(0, currentTime - activeClip.start);
-                        audio.currentTime = clipRelativeTime;
-                        audio.play().catch(err => console.error('[Audio] Auto-play error:', err));
-                        console.log(`[Audio] Auto-playing from ${clipRelativeTime}s`);
-                    }
-                };
-
-                audio.load();
-            } else {
-                console.log(`[Audio] No audio URL for ${clipName} clip`);
-                audio.src = '';
-                setCurrentClipAudio(null);
-            }
+        // Just update state tracking - RAF loop handles actual audio loading/playback
+        if (audioUrl && currentClipAudio !== audioUrl) {
+            console.log(`[Audio] Clip changed to ${clipName}, tracking audio URL:`, audioUrl);
+            setCurrentClipAudio(audioUrl);
+        } else if (!audioUrl && currentClipAudio) {
+            console.log(`[Audio] No audio URL for ${clipName} clip`);
+            setCurrentClipAudio(null);
         }
-    }, [activeClip, clipAudioUrls, currentClipAudio, isPlaying, currentTime, results]);
+    }, [activeClip, clipAudioUrls, currentClipAudio]);
 
     // Compute background color based on active clip - use clip's backgroundColor if available
     const currentBackgroundColor = (activeClip && activeClip.backgroundColor)
@@ -910,6 +1304,10 @@ export const ProjectScreen: React.FC<ProjectScreenProps> = ({ sessionId }) => {
     const aiAudioRef = useRef<HTMLAudioElement>(null);
     const videoLayerRef = useRef<HTMLDivElement>(null);
     const rafRef = useRef<number | null>(null);
+    const audioStartedRef = useRef<boolean>(false); // Track if audio started for current playback
+    
+    // ============== PLAYBACK REFS ==============
+    const currentTimeRef = useRef<number>(0); // Mutable ref to track time without re-renders
 
     // ============== WEBSOCKET ==============
     const { progress } = useProcessingWebSocket(sessionId || '') as { progress: { message: string } | null };
@@ -923,34 +1321,28 @@ export const ProjectScreen: React.FC<ProjectScreenProps> = ({ sessionId }) => {
 
         const clipNarrations = results.narrations;
 
-        const introClip = clipNarrations.find((c: any) => c.clipName === 'intro');
-        const videoClip = clipNarrations.find((c: any) => c.clipName === 'video');
-        const outroClip = clipNarrations.find((c: any) => c.clipName === 'outro');
+        // Build dynamic audio URLs for all clips
+        const urls: Record<string, string | null> = {};
+        let allHaveGeneratedAudio = true;
+
+        for (const clip of clipNarrations) {
+            const clipName = clip.clipName;
+            if (clip.generatedAudioUrl) {
+                urls[clipName] = formatCdnUrl(clip.generatedAudioUrl, cacheBustVersion);
+            } else {
+                urls[clipName] = formatCdnUrl(clip.rawAudioUrl, cacheBustVersion);
+                allHaveGeneratedAudio = false;
+            }
+        }
 
         // Check if speech has been generated (all clips must have generated audio)
-        const speechGenerated = !!(introClip?.generatedAudioUrl && videoClip?.generatedAudioUrl && outroClip?.generatedAudioUrl);
-        setHasSpeechGenerated(speechGenerated);
+        setHasSpeechGenerated(allHaveGeneratedAudio);
+        setClipAudioUrls(urls);
 
-        // If speech generated, use generatedAudioUrl for all clips; otherwise use rawAudioUrl per clip
-        if (speechGenerated) {
-            const urls = {
-                intro: formatCdnUrl(introClip?.generatedAudioUrl),
-                video: formatCdnUrl(videoClip?.generatedAudioUrl),
-                outro: formatCdnUrl(outroClip?.generatedAudioUrl)
-            };
-            setClipAudioUrls(urls);
-            console.log('[Audio] Using generated audio URLs (CDN):', urls);
+        if (allHaveGeneratedAudio) {
+            console.log('[Audio] Using generated audio URLs (CDN with cache bust):', urls);
         } else {
-            // Before speech generation: use raw audio for each clip if available
-            const urls = {
-                intro: formatCdnUrl(introClip?.rawAudioUrl),
-                video: formatCdnUrl(videoClip?.rawAudioUrl),
-                outro: formatCdnUrl(outroClip?.rawAudioUrl)
-            };
-            setClipAudioUrls(urls);
-            console.log('[Audio] Using raw audio URLs (CDN, speech not generated):', urls);
-            console.log('[Audio] Raw audio availability - intro:', !!introClip?.rawAudioUrl, 'video:', !!videoClip?.rawAudioUrl, 'outro:', !!outroClip?.rawAudioUrl);
-            console.log('[Audio] Formatted URLs - intro:', urls.intro, 'video:', urls.video, 'outro:', urls.outro);
+            console.log('[Audio] Using raw audio URLs (CDN with cache bust, speech not generated):', urls);
         }
 
         // Initialize active clip if not set and timeline exists
@@ -969,7 +1361,31 @@ export const ProjectScreen: React.FC<ProjectScreenProps> = ({ sessionId }) => {
             setAspectRatio(dataAspectRatio);
             setAspectRatioInitialized(true);
         }
-    }, [results, aspectRatioInitialized]);
+    }, [results, aspectRatioInitialized, cacheBustVersion]); // Added cacheBustVersion to reload audio when cache changes
+    
+    // Preload all clip audio files for smooth transitions
+    useEffect(() => {
+        const preloadedAudio: HTMLAudioElement[] = [];
+        
+        Object.entries(clipAudioUrls).forEach(([clipName, url]) => {
+            if (url) {
+                const audio = new Audio();
+                audio.preload = 'auto';
+                audio.src = url;
+                audio.load();
+                preloadedAudio.push(audio);
+                console.log(`[Audio Preload] Preloading ${clipName}:`, url);
+            }
+        });
+        
+        return () => {
+            // Cleanup preloaded audio on unmount
+            preloadedAudio.forEach(audio => {
+                audio.src = '';
+            });
+        };
+    }, [clipAudioUrls]);
+    
     const showTranscriptionPanel = activeSidebarItem === 'script';
     const showMusicPanel = activeSidebarItem === 'music';
     // Note: Elements panel logic moved to TextEditPanel which shows based on isTextSelected
@@ -1144,96 +1560,258 @@ export const ProjectScreen: React.FC<ProjectScreenProps> = ({ sessionId }) => {
         };
     }, [sessionId, cacheBustVersion]); // Refetch when cacheBustVersion changes
 
-    // Synchronize video with audio - Use RAF for smooth timeline updates
-    useEffect(() => {
-        const video = videoRef.current;
+    // ============== STABLE PLAYBACK LOOP ==============
+    // Uses setInterval instead of RAF to avoid React lifecycle issues
+    // Uses refs for all mutable state to prevent effect restarts
+    const isPlayingRef = useRef(false);
+    const timelineRef = useRef<any>(null);
+    const clipAudioUrlsRef = useRef(clipAudioUrls);
+    const lastAudioSyncRef = useRef(0);
+    const playbackStartTimeRef = useRef(0);
+    const playbackStartTimelineTimeRef = useRef(0);
+    const seekFlagRef = useRef(false);
+    const playbackIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+    const lastClipNameRef = useRef<string | null>(null); // Track current clip to detect changes
+    
+    // Keep refs in sync with state
+    useEffect(() => { isPlayingRef.current = isPlaying; }, [isPlaying]);
+    useEffect(() => { timelineRef.current = results?.timeline; }, [results?.timeline]);
+    useEffect(() => { clipAudioUrlsRef.current = clipAudioUrls; }, [clipAudioUrls]);
+    
+    // Helper to load and play audio for a clip
+    const loadAudioForClip = useCallback((clipName: 'intro' | 'video' | 'outro', clipRelativeTime: number) => {
         const audio = aiAudioRef.current;
-
-        if (!video) return;
-
-        let rafId: number | null = null;
-        let lastSyncTime = 0;
-
-        const updateTimeline = () => {
-            if (results?.timeline && !video.paused) {
-                // Skip updates during manual seeks
-                if ((video as any).isSeeking) {
-                    rafId = requestAnimationFrame(updateTimeline);
+        if (!audio) return;
+        
+        const audioUrl = clipAudioUrlsRef.current[clipName];
+        if (!audioUrl) {
+            console.log(`[Playback] No audio URL for ${clipName}`);
+            return;
+        }
+        
+        // Check if source needs to change
+        const currentSrc = audio.src || '';
+        const urlFilename = audioUrl.split('?')[0].split('/').pop() || '';
+        const needsSourceChange = urlFilename && !currentSrc.includes(urlFilename);
+        
+        if (needsSourceChange) {
+            console.log(`[Playback] Loading audio for ${clipName}:`, audioUrl);
+            audio.src = audioUrl;
+            audio.currentTime = clipRelativeTime;
+            audio.play().catch(err => console.error(`[${clipName}] Audio play error:`, err));
+        } else {
+            // Same source - just sync and play
+            audio.currentTime = clipRelativeTime;
+            if (audio.paused) {
+                audio.play().catch(err => console.error(`[${clipName}] Audio play error:`, err));
+            }
+        }
+    }, []);
+    
+    // Stop playback interval
+    const stopPlayback = useCallback(() => {
+        if (playbackIntervalRef.current) {
+            clearInterval(playbackIntervalRef.current);
+            playbackIntervalRef.current = null;
+            console.log('[Playback] Stopped');
+        }
+    }, []);
+    
+    // Start playback interval
+    const startPlayback = useCallback(() => {
+        if (playbackIntervalRef.current) {
+            console.log('[Playback] Already running');
+            return;
+        }
+        
+        const timeline = timelineRef.current;
+        if (!timeline) {
+            console.log('[Playback] No timeline available');
+            return;
+        }
+        
+        if (!videoRef.current) {
+            console.log('[Playback] No video element');
+            return;
+        }
+        
+        playbackStartTimeRef.current = performance.now();
+        playbackStartTimelineTimeRef.current = currentTimeRef.current;
+        // DON'T reset audioStartedRef here - handlePlayPause already set it up correctly
+        
+        console.log(`[Playback] Starting at timeline ${playbackStartTimelineTimeRef.current}s, audioStarted: ${audioStartedRef.current}`);
+        
+        // Playback tick - runs every 16ms (~60fps)
+        playbackIntervalRef.current = setInterval(() => {
+            const video = videoRef.current;
+            const audio = aiAudioRef.current;
+            
+            if (!video || !isPlayingRef.current || !timelineRef.current) {
+                return;
+            }
+            
+            // Check if seek happened - reset playback reference but NOT audioStartedRef
+            // (handleSeek already correctly set up audio for the target position)
+            if (seekFlagRef.current) {
+                playbackStartTimeRef.current = performance.now();
+                playbackStartTimelineTimeRef.current = currentTimeRef.current;
+                // DON'T reset audioStartedRef - handleSeek already handled audio correctly
+                seekFlagRef.current = false;
+                console.log(`[Playback] Seek detected, continuing from ${currentTimeRef.current}s`);
+            }
+            
+            const timeline = timelineRef.current;
+            const elapsedMs = performance.now() - playbackStartTimeRef.current;
+            const elapsedSec = elapsedMs / 1000;
+            let newTime = playbackStartTimelineTimeRef.current + elapsedSec;
+            
+            // Get current clip
+            const clip = getActiveClip(timeline, newTime);
+            const mode = getPlaybackMode(timeline, newTime);
+            
+            if (!clip) {
+                console.log('[Playback] No clip at time', newTime);
+                stopPlayback();
+                setIsPlaying(false);
+                return;
+            }
+            
+            // Detect clip changes and reload audio
+            if (lastClipNameRef.current !== clip.name) {
+                lastClipNameRef.current = clip.name;
+                // Update activeClip state so background color and other clip properties update
+                setActiveClip(clip);
+                // Reset audio so it gets reloaded for new clip
+                audioStartedRef.current = false;
+            }
+            
+            // Handle clip transitions
+            if (newTime >= clip.end) {
+                const nextClip = getActiveClip(timeline, clip.end + 0.001);
+                
+                if (clip.name === 'intro' && nextClip?.name === 'video') {
+                    console.log('[Playback] Transition: intro → video');
+                    newTime = clip.end;
+                    
+                    // Start video from beginning
+                    video.currentTime = 0;
+                    video.play().catch(e => console.error('Video play error:', e));
+                    
+                    // Load video audio
+                    loadAudioForClip('video', 0);
+                    audioStartedRef.current = true;
+                    lastClipNameRef.current = 'video';
+                    setActiveClip(nextClip);
+                    
+                    // Reset playback reference for new clip
+                    playbackStartTimeRef.current = performance.now();
+                    playbackStartTimelineTimeRef.current = newTime;
+                    
+                } else if (clip.name === 'video' && nextClip?.name === 'outro') {
+                    console.log('[Playback] Transition: video → outro');
+                    newTime = clip.end;
+                    
+                    // Pause video
+                    video.pause();
+                    
+                    // Load outro audio
+                    loadAudioForClip('outro', 0);
+                    audioStartedRef.current = true;
+                    lastClipNameRef.current = 'outro';
+                    setActiveClip(nextClip);
+                    
+                    // Reset playback reference for new clip
+                    playbackStartTimeRef.current = performance.now();
+                    playbackStartTimelineTimeRef.current = newTime;
+                    
+                } else if (clip.name === 'outro' && newTime >= clip.end) {
+                    console.log('[Playback] End of outro, stopping');
+                    newTime = clip.end;
+                    stopPlayback();
+                    setIsPlaying(false);
+                    if (audio) audio.pause();
+                    video.pause();
+                    setCurrentTime(newTime);
                     return;
                 }
-
-                const timelineTime = videoTimeToTimelineTime(results.timeline, video.currentTime);
-                const mode = getPlaybackMode(results.timeline, timelineTime);
-
-                // During video playback, continuously update for smooth 60fps timeline
-                if (mode === 'video') {
-                    setCurrentTime(timelineTime);
-
-                    // Sync audio periodically (not every frame)
-                    const now = performance.now();
-                    if (audio && now - lastSyncTime > 100) {
-                        const clip = getActiveClip(results.timeline, timelineTime);
-                        if (clip) {
-                            const clipRelativeTime = timelineTime - clip.start;
-                            const diff = Math.abs(clipRelativeTime - audio.currentTime);
-                            if (diff > 0.3) {
-                                audio.currentTime = clipRelativeTime;
-                            }
-                        }
-                        lastSyncTime = now;
-                    }
+            }
+            
+            // Clamp time
+            const totalDuration = getTimelineDuration(timeline) || 0;
+            newTime = Math.min(newTime, totalDuration);
+            
+            // Update state
+            currentTimeRef.current = newTime;
+            setCurrentTime(newTime);
+            
+            // Mode-specific handling
+            if (mode === 'video') {
+                // Keep video in sync
+                const expectedVideoTime = timelineToVideoTime(timeline, newTime);
+                
+                if (video.paused) {
+                    video.currentTime = expectedVideoTime;
+                    video.play().catch(e => console.error('Video resume error:', e));
                 }
-
-                rafId = requestAnimationFrame(updateTimeline);
-            }
-        };
-
-        const handlePlay = () => {
-            rafId = requestAnimationFrame(updateTimeline);
-        };
-
-        const handlePause = () => {
-            if (rafId !== null) {
-                cancelAnimationFrame(rafId);
-                rafId = null;
-            }
-        };
-
-        const handleTimeUpdate = () => {
-            // Skip updates during manual seeks
-            if ((video as any).seeking) return;
-
-            // Fallback update when RAF isn't running (for non-video mode or paused)
-            if (results?.timeline) {
-                const mode = getPlaybackMode(results.timeline, currentTime);
-                if (mode !== 'video' || video.paused) {
-                    const timelineTime = videoTimeToTimelineTime(results.timeline, video.currentTime);
-                    setCurrentTime(timelineTime);
-                    setActiveClip(getActiveClip(results.timeline, timelineTime));
+                
+                // Start audio if not started
+                if (!audioStartedRef.current) {
+                    const clipRelativeTime = newTime - clip.start;
+                    loadAudioForClip('video', clipRelativeTime);
+                    audioStartedRef.current = true;
+                }
+                
+                // Periodic audio sync (every 500ms)
+                const now = performance.now();
+                if (audio && now - lastAudioSyncRef.current > 500) {
+                    const clipRelativeTime = newTime - clip.start;
+                    const drift = Math.abs(audio.currentTime - clipRelativeTime);
+                    if (drift > 0.3) {
+                        console.log(`[Playback] Audio drift ${drift.toFixed(2)}s, syncing`);
+                        audio.currentTime = clipRelativeTime;
+                    }
+                    lastAudioSyncRef.current = now;
                 }
             } else {
-                setCurrentTime(video.currentTime);
+                // Intro/Outro - ensure video is paused
+                if (!video.paused) {
+                    video.pause();
+                }
+                
+                // Start audio if not started
+                if (!audioStartedRef.current) {
+                    const clipRelativeTime = newTime - clip.start;
+                    loadAudioForClip(clip.name as 'intro' | 'video' | 'outro', clipRelativeTime);
+                    audioStartedRef.current = true;
+                }
             }
-        };
-
-        video.addEventListener('play', handlePlay);
-        video.addEventListener('pause', handlePause);
-        video.addEventListener('timeupdate', handleTimeUpdate);
-
-        // Start RAF if already playing
-        if (!video.paused) {
-            rafId = requestAnimationFrame(updateTimeline);
+            
+        }, 16); // ~60fps
+    }, [loadAudioForClip, stopPlayback]);
+    
+    // Watch for isPlaying state changes
+    useEffect(() => {
+        if (isPlaying) {
+            startPlayback();
+        } else {
+            stopPlayback();
+            // Also pause media elements
+            if (videoRef.current) videoRef.current.pause();
+            if (aiAudioRef.current) aiAudioRef.current.pause();
         }
-
+    }, [isPlaying, startPlayback, stopPlayback]);
+    
+    // Cleanup on unmount
+    useEffect(() => {
         return () => {
-            video.removeEventListener('play', handlePlay);
-            video.removeEventListener('pause', handlePause);
-            video.removeEventListener('timeupdate', handleTimeUpdate);
-            if (rafId !== null) {
-                cancelAnimationFrame(rafId);
-            }
+            stopPlayback();
         };
-    }, [results]);
+    }, [stopPlayback]);
+    
+    // Keep currentTimeRef in sync when currentTime changes externally (e.g., seek)
+    useEffect(() => {
+        currentTimeRef.current = currentTime;
+    }, [currentTime]);
 
     // Video event handlers for metadata and ended events
     useEffect(() => {
@@ -1286,27 +1864,26 @@ export const ProjectScreen: React.FC<ProjectScreenProps> = ({ sessionId }) => {
         };
 
         const handleEnded = () => {
-            // When video ends, transition to outro if timeline exists
+            // When video element ends naturally, the unified RAF loop will handle transition to outro
+            // This is a fallback in case RAF loop doesn't catch it
             if (results?.timeline) {
                 const videoClip = results.timeline.clips.find((c: any) => c.name === 'video');
-                if (videoClip) {
-                    console.log('[Video] Video ended, transitioning to outro at', videoClip.end);
-                    // Set time to start of outro
-                    setCurrentTime(videoClip.end);
-                    const outroClip = getActiveClip(results.timeline, videoClip.end + 0.001);
-                    setActiveClip(outroClip);
-                    if (audio) audio.pause();
-                    // If still playing, manual loop will handle outro
-                    if (!isPlaying) {
-                        video.pause();
-                    }
+                if (videoClip && isPlaying) {
+                    console.log('[Video] Video ended event, RAF loop should handle outro transition');
+                    // Update timeline time to end of video clip
+                    const endTime = videoClip.end;
+                    setCurrentTime(endTime);
+                    currentTimeRef.current = endTime;
+                    // RAF loop will detect this and transition to outro
                     return;
                 }
             }
-            // Fallback: stop playback
-            setIsPlaying(false);
-            if (audio) audio.pause();
-            video.pause();
+            // Fallback: stop playback if not handled by RAF
+            if (!isPlaying) {
+                setIsPlaying(false);
+                if (audio) audio.pause();
+                video.pause();
+            }
         };
 
         video.addEventListener('loadedmetadata', handleLoadedMetadata);
@@ -1344,8 +1921,17 @@ export const ProjectScreen: React.FC<ProjectScreenProps> = ({ sessionId }) => {
             console.log('[Effects] Extracted from displayElements:', effectsArray.length, 'effects with clip boundaries');
 
             // Extract text elements from displayElements
-            textElementsArray = results.displayElements.flatMap((element: any) => element.elements || []);
-            console.log('[TextElements] Extracted from displayElements:', textElementsArray.length, 'text elements');
+            // CRITICAL: Include clip boundaries so TextOverlayLayer can calculate absolute times
+            textElementsArray = results.displayElements.flatMap((element: any) => {
+                const clipStart = element.clipStart;
+                const clipEnd = element.clipEnd;
+                return (element.elements || []).map((el: any) => ({
+                    ...el,
+                    clipStart,
+                    clipEnd
+                }));
+            });
+            console.log('[TextElements] Extracted from displayElements:', textElementsArray.length, 'text elements with clip boundaries');
         } else if (results?.displayEffects) {
             // Legacy format: use displayEffects directly
             effectsArray = results.displayEffects;
@@ -1366,8 +1952,28 @@ export const ProjectScreen: React.FC<ProjectScreenProps> = ({ sessionId }) => {
             return;
         }
 
+        // Filter effects that have bounds and are zoom-type effects
+        // Accept effects with either: style.zoom.enabled OR type === 'zoom'
         const filtered = effectsArray
-            .filter((effect: any) => effect.target?.bounds && effect.style?.zoom?.enabled);
+            .filter((effect: any) => {
+                const hasBounds = !!effect.target?.bounds;
+                const hasZoomEnabled = !!effect.style?.zoom?.enabled;
+                const isZoomType = effect.type === 'zoom';
+                // Include effect if it has bounds AND (is zoom type OR has zoom enabled)
+                return hasBounds && (isZoomType || hasZoomEnabled);
+            });
+        
+        console.log('[Effects] Filtering results:', {
+            totalEffects: effectsArray.length,
+            withBoundsAndZoom: filtered.length,
+            sampleEffects: effectsArray.slice(0, 3).map((e: any) => ({
+                start: e.start,
+                end: e.end,
+                type: e.type,
+                hasZoomEnabled: !!e.style?.zoom?.enabled,
+                hasBounds: !!e.target?.bounds
+            }))
+        });
 
         const normalized = filtered.map((effect: any) => {
             // Use backend-computed scale if available, otherwise calculate locally
@@ -1386,83 +1992,7 @@ export const ProjectScreen: React.FC<ProjectScreenProps> = ({ sessionId }) => {
         setNormalizedEffects(normalized);
     }, [results, recordingDimensions]);
 
-    // Manual playback loop for intro/outro clips
-    useEffect(() => {
-        if (!isPlaying || !results?.timeline) return;
-
-        const video = videoRef.current;
-        const audio = aiAudioRef.current;
-        if (!video) return;
-
-        const playbackMode = getPlaybackMode(results.timeline, currentTime);
-        const clip = getActiveClip(results.timeline, currentTime);
-
-        // Manual time advancement for intro/outro (video is paused)
-        if (playbackMode === 'intro' || playbackMode === 'outro') {
-            // Ensure video is paused during intro/outro
-            if (!video.paused) {
-                video.pause();
-            }
-
-            // Play audio for intro/outro if available
-            if (audio && clip) {
-                const clipRelativeTime = currentTime - clip.start;
-
-                if (currentClipAudio) {
-                    // Audio is available for this clip
-                    if (audio.paused || Math.abs(audio.currentTime - clipRelativeTime) > 0.5) {
-                        audio.currentTime = clipRelativeTime;
-                        audio.play().catch(err => console.error(`[${playbackMode}] Audio play error:`, err));
-                        console.log(`[${playbackMode}] Playing audio from ${clipRelativeTime}s`);
-                    }
-                } else {
-                    // No audio for this clip, ensure audio is paused
-                    if (!audio.paused) {
-                        audio.pause();
-                        console.log(`[${playbackMode}] No audio available for this clip, audio paused`);
-                    }
-                }
-            }
-
-            const interval = setInterval(() => {
-                setCurrentTime(prev => {
-                    const next = prev + 0.016; // ~60fps advancement
-                    const clip = getActiveClip(results.timeline, prev);
-
-                    if (!clip) return prev;
-
-                    // Check if we've reached the end of current clip
-                    if (next >= clip.end) {
-                        if (clip.name === 'intro') {
-                            // Transition from intro to video clip
-                            console.log('[Playback] Transitioning from intro to video at time', clip.end);
-                            const nextClip = getActiveClip(results.timeline, clip.end + 0.001);
-                            if (nextClip && nextClip.name === 'video') {
-                                video.currentTime = 0;
-                                video.play().catch(err => console.error('Video play error:', err));
-                                if (audio) {
-                                    audio.currentTime = 0;
-                                    audio.play().catch(err => console.error('Audio play error:', err));
-                                }
-                                setActiveClip(nextClip);
-                                return clip.end; // Return exact clip boundary
-                            }
-                        } else if (clip.name === 'outro') {
-                            // End of outro, stop playback
-                            console.log('[Playback] Reached end of outro, stopping');
-                            setIsPlaying(false);
-                            return clip.end;
-                        }
-                    }
-
-                    return next;
-                });
-            }, 16); // ~60fps
-
-            return () => clearInterval(interval);
-        }
-        // During video clip, handleTimeUpdate manages currentTime from video.currentTime
-    }, [isPlaying, results?.timeline, currentTime, currentClipAudio]);
+    // NOTE: Manual playback loop removed - now using unified RAF playback loop above
 
     // If backend provides recording dimensions, use them before metadata loads
     useEffect(() => {
@@ -1476,12 +2006,66 @@ export const ProjectScreen: React.FC<ProjectScreenProps> = ({ sessionId }) => {
         }
     }, [results, recordingDimensions]);
 
+    // Function to apply effects at a specific time (used for both playback and seeking while paused)
+    const applyEffectsAtTime = useCallback((time: number) => {
+        const videoLayer = videoLayerRef.current;
+        if (!videoLayer) return;
+
+        // Get base scale from media data (default 85 → 0.85)
+        const mediaScale = activeClip?.media?.[0]?.scale ?? 85;
+        const baseScale = mediaScale / 100;
+
+        // If no effects, just apply base scale
+        if (normalizedEffects.length === 0) {
+            videoLayer.style.transition = 'transform 0.15s ease-out';
+            videoLayer.style.transform = `scale3d(${baseScale}, ${baseScale}, 1) translate3d(0%, 0%, 0)`;
+            return;
+        }
+
+        const activeEffects = getActiveEffects(normalizedEffects, time);
+
+        if (activeEffects.length > 0) {
+            const effect = resolveZoomEffect(activeEffects);
+
+            if (effect) {
+                const { anchorX, anchorY, autoScale } = effect.normalizedBounds;
+                const targetScale = autoScale || effect.style?.zoom?.scale || 1;
+
+                // For seek/pause, show effects at full strength (progress = 1)
+                const { scale, translateX, translateY } = calculateZoomTransform(
+                    1, anchorX, anchorY, targetScale as number
+                );
+
+                const finalScale = baseScale * scale;
+                videoLayer.style.transition = 'transform 0.15s ease-out';
+                videoLayer.style.transform = `scale3d(${finalScale}, ${finalScale}, 1) translate3d(${translateX}%, ${translateY}%, 0)`;
+            }
+        } else {
+            // No active effects - reset to base scale
+            videoLayer.style.transition = 'transform 0.15s ease-out';
+            videoLayer.style.transform = `scale3d(${baseScale}, ${baseScale}, 1) translate3d(0%, 0%, 0)`;
+        }
+    }, [normalizedEffects, activeClip]);
+
     // Rendering loop for CSS effects - OPTIMIZED
+    // Now runs based on isPlaying state, not video element events (for intro/outro support)
     useEffect(() => {
         const video = videoRef.current;
         const videoLayer = videoLayerRef.current;
 
-        if (!video || !videoLayer || normalizedEffects.length === 0) return;
+        if (!video || !videoLayer) return;
+
+        // Get base scale from media data (default 85 → 0.85)
+        const mediaScale = activeClip?.media?.[0]?.scale ?? 85;
+        const baseScale = mediaScale / 100;
+
+        // If no effects, just apply base scale and handle play state
+        if (normalizedEffects.length === 0) {
+            // Apply base scale
+            videoLayer.style.transition = 'transform 0.15s ease-out';
+            videoLayer.style.transform = `scale3d(${baseScale}, ${baseScale}, 1) translate3d(0%, 0%, 0)`;
+            return;
+        }
 
         // Enable GPU acceleration
         videoLayer.style.willChange = 'transform';
@@ -1492,18 +2076,18 @@ export const ProjectScreen: React.FC<ProjectScreenProps> = ({ sessionId }) => {
         const UPDATE_INTERVAL = 16; // ~60fps, but throttled
 
         const renderFrame = () => {
-            // CRITICAL: Convert video.currentTime (raw video time: 0-46s) to timeline time (3-49s)
-            // Effects in instructions.json are stored in timeline coordinates (shifted by intro duration)
-            const time = videoTimeToTimelineTime(results?.timeline, video.currentTime);
+            // Use timeline time from ref (works for all modes: intro, video, outro)
+            const time = currentTimeRef.current;
             const now = performance.now();
 
             // Throttle updates to reduce CPU load
             if (now - lastUpdateTime < UPDATE_INTERVAL) {
-                if (!video.paused && !video.ended) {
+                if (isPlayingRef.current) {
                     rafRef.current = requestAnimationFrame(renderFrame);
                 }
                 return;
             }
+            
             lastUpdateTime = now;
 
             const activeEffects = getActiveEffects(normalizedEffects, time);
@@ -1554,39 +2138,32 @@ export const ProjectScreen: React.FC<ProjectScreenProps> = ({ sessionId }) => {
                 currentEffectId = null;
             }
 
-            if (!video.paused && !video.ended) {
+            // Continue loop while playing
+            if (isPlayingRef.current) {
                 rafRef.current = requestAnimationFrame(renderFrame);
             }
         };
 
-        const handlePlay = () => {
+        // Start/stop based on isPlaying state
+        if (isPlaying) {
             if (rafRef.current) cancelAnimationFrame(rafRef.current);
-            lastUpdateTime = 0; // Reset throttle on play
+            lastUpdateTime = 0;
             rafRef.current = requestAnimationFrame(renderFrame);
-        };
-
-        const handlePause = () => {
+        } else {
             if (rafRef.current) {
                 cancelAnimationFrame(rafRef.current);
                 rafRef.current = null;
             }
-        };
-
-        video.addEventListener('play', handlePlay);
-        video.addEventListener('pause', handlePause);
-
-        if (!video.paused && !video.ended) {
-            rafRef.current = requestAnimationFrame(renderFrame);
+            // Apply effects at current position when paused (for initial load and seeking)
+            applyEffectsAtTime(currentTimeRef.current);
         }
 
         return () => {
-            video.removeEventListener('play', handlePlay);
-            video.removeEventListener('pause', handlePause);
             if (rafRef.current) cancelAnimationFrame(rafRef.current);
             // Clean up GPU hint
             if (videoLayer) videoLayer.style.willChange = 'auto';
         };
-    }, [normalizedEffects, results?.timeline, activeClip]);
+    }, [normalizedEffects, results?.timeline, activeClip, isPlaying, applyEffectsAtTime]);
 
     // ============== HANDLERS ==============
 
@@ -1607,74 +2184,48 @@ export const ProjectScreen: React.FC<ProjectScreenProps> = ({ sessionId }) => {
         } else {
             // Start/resume playback
             if (results?.timeline) {
-                const mode = getPlaybackMode(results.timeline, currentTime);
                 const clip = getActiveClip(results.timeline, currentTime);
+                const mode = getPlaybackMode(results.timeline, currentTime);
 
-                // Update active clip state first
+                if (!clip) return;
+
+                // Update active clip state
                 setActiveClip(clip);
-
-                if (mode === 'intro' || mode === 'outro') {
-                    // For intro/outro, ensure video is paused, play audio, start manual advancement
-                    video.pause();
-                    setIsPlaying(true);
-
-                    if (audio && clip) {
-                        const clipRelativeTime = Math.max(0, currentTime - clip.start);
-                        const audioUrl = clipAudioUrls[clip.name as 'intro' | 'video' | 'outro'];
-
-                        if (audioUrl) {
-                            // Ensure audio is loaded with correct source
-                            if (audio.src !== audioUrl) {
-                                console.log(`[Playback] Loading ${mode} audio:`, audioUrl);
-                                audio.src = audioUrl;
-                                audio.load();
-                                audio.onloadeddata = () => {
-                                    audio.currentTime = clipRelativeTime;
-                                    audio.play().catch(err => console.error(`[${mode}] Audio play error:`, err));
-                                    console.log(`[${mode}] Playing audio from ${clipRelativeTime}s`);
-                                };
-                            } else {
-                                audio.currentTime = clipRelativeTime;
-                                audio.play().catch(err => console.error(`[${mode}] Audio play error:`, err));
-                                console.log(`[${mode}] Playing audio from ${clipRelativeTime}s`);
-                            }
-                        } else {
-                            console.log(`[${mode}] No audio available, playing silently`);
-                        }
-                    }
-                } else if (mode === 'video') {
-                    // For video clip, calculate correct video time and play
+                lastClipNameRef.current = clip.name; // Track current clip
+                
+                const clipRelativeTime = Math.max(0, currentTime - clip.start);
+                const clipName = clip.name as 'intro' | 'video' | 'outro';
+                
+                // For video mode, prepare video element
+                if (mode === 'video') {
                     const videoTime = timelineToVideoTime(results.timeline, currentTime);
-                    const clipRelativeTime = Math.max(0, currentTime - (clip?.start || 0));
-                    console.log(`[Playback] Starting video at timeline ${currentTime}s (video time ${videoTime}s)`);
-
                     video.currentTime = videoTime;
-                    video.play()
-                        .then(() => {
-                            setIsPlaying(true);
-                            if (audio && clip) {
-                                const audioUrl = clipAudioUrls[clip.name as 'intro' | 'video' | 'outro'];
-                                if (audioUrl) {
-                                    // Ensure audio is loaded
-                                    if (audio.src !== audioUrl) {
-                                        console.log(`[Playback] Loading video audio:`, audioUrl);
-                                        audio.src = audioUrl;
-                                        audio.load();
-                                        audio.onloadeddata = () => {
-                                            audio.currentTime = clipRelativeTime;
-                                            audio.play().catch(err => console.error('[Video] Audio play error:', err));
-                                            console.log(`[Video] Playing audio from ${clipRelativeTime}s`);
-                                        };
-                                    } else {
-                                        audio.currentTime = clipRelativeTime;
-                                        audio.play().catch(err => console.error('[Video] Audio play error:', err));
-                                        console.log(`[Video] Playing audio from ${clipRelativeTime}s`);
-                                    }
-                                }
-                            }
-                        })
-                        .catch(err => console.error('Video play error:', err));
+                    video.play().catch(e => console.error('Video play error:', e));
                 }
+                
+                // Start audio immediately for the current clip
+                const audioUrl = clipAudioUrls[clipName];
+                if (audioUrl && audio) {
+                    // Check if we need to change source
+                    const currentSrc = audio.src || '';
+                    const urlFilename = audioUrl.split('?')[0].split('/').pop() || '';
+                    const needsSourceChange = urlFilename && !currentSrc.includes(urlFilename);
+                    
+                    if (needsSourceChange) {
+                        console.log(`[Play] Loading audio for ${clipName}:`, audioUrl);
+                        audio.src = audioUrl;
+                    }
+                    audio.currentTime = clipRelativeTime;
+                    audio.play().catch(err => console.error(`[${clipName}] Audio play error:`, err));
+                }
+                
+                // Mark audio as started so playback loop doesn't restart it
+                audioStartedRef.current = true;
+                
+                // Set playing state - this triggers the stable playback loop
+                setIsPlaying(true);
+                
+                console.log(`[Playback] Starting at timeline ${currentTime}s, mode: ${mode}, clip: ${clip?.name}, clipTime: ${clipRelativeTime}s`);
             } else {
                 // Fallback for non-timeline videos
                 video.play()
@@ -1699,88 +2250,119 @@ export const ProjectScreen: React.FC<ProjectScreenProps> = ({ sessionId }) => {
 
         if (!video) return;
 
-        // Set seeking flag to prevent RAF/timeupdate from overwriting
-        (video as any).isSeeking = true;
-
-        // Update timeline time immediately
-        setCurrentTime(timelineTime);
+        // Clamp to valid range
+        const totalDuration = results?.timeline ? getTimelineDuration(results.timeline) : duration;
+        const clampedTime = Math.max(0, Math.min(timelineTime, totalDuration || timelineTime));
+        
+        // Update timeline time and ref immediately
+        setCurrentTime(clampedTime);
+        currentTimeRef.current = clampedTime;
+        
+        // Signal to the playback loop that a seek happened
+        seekFlagRef.current = true;
+        
+        // For any seek while playing, pause and let user resume manually
+        if (isPlaying) {
+            console.log(`[Seek] Seek detected while playing (${currentTime}s → ${clampedTime}s), pausing playback`);
+            video.pause();
+            if (audio) audio.pause();
+            setIsPlaying(false);
+            // Update lastClipNameRef so next play knows to load audio
+            lastClipNameRef.current = null;
+            audioStartedRef.current = false;
+            
+            // Still update video position for preview
+            if (results?.timeline) {
+                const mode = getPlaybackMode(results.timeline, clampedTime);
+                const clip = getActiveClip(results.timeline, clampedTime);
+                if (clip) {
+                    setActiveClip(clip);
+                    if (mode === 'video') {
+                        const videoTime = timelineToVideoTime(results.timeline, clampedTime);
+                        video.currentTime = videoTime;
+                    }
+                }
+            }
+            // Apply effects at the new time position
+            applyEffectsAtTime(clampedTime);
+            return;
+        }
 
         if (results?.timeline) {
-            const mode = getPlaybackMode(results.timeline, timelineTime);
-            const clip = getActiveClip(results.timeline, timelineTime);
+            const mode = getPlaybackMode(results.timeline, clampedTime);
+            const clip = getActiveClip(results.timeline, clampedTime);
 
             if (!clip) return;
 
-            const clipRelativeTime = timelineTime - clip.start;
+            const clipRelativeTime = Math.max(0, clampedTime - clip.start);
 
-            // Update active clip first
-            const previousClip = activeClip;
+            // Update active clip and track it
             setActiveClip(clip);
+            lastClipNameRef.current = clip.name;
 
+            const clipName = clip.name as 'intro' | 'video' | 'outro';
+            const audioUrl = clipAudioUrls[clipName];
+            
             if (mode === 'intro' || mode === 'outro') {
-                // For intro/outro: pause video, sync audio to clip-relative time
+                // For intro/outro: ensure video is paused
                 video.pause();
-
-                if (audio) {
-                    // If switching clips, mark pending seek time and wait for audio to load
-                    if (previousClip?.name !== clip.name) {
-                        (audio as any).pendingSeekTime = clipRelativeTime;
-                        console.log(`[Seek] ${mode} pending seek to ${clipRelativeTime}s (waiting for audio load)`);
-                    } else {
-                        // Same clip, seek immediately
-                        audio.currentTime = clipRelativeTime;
-                        console.log(`[Seek] ${mode} at timeline ${timelineTime}s, clip-relative ${clipRelativeTime}s`);
+                
+                // Load and sync audio for this clip
+                if (audio && audioUrl) {
+                    const currentSrc = audio.src || '';
+                    const urlFilename = audioUrl.split('?')[0].split('/').pop() || '';
+                    const needsSourceChange = urlFilename && !currentSrc.includes(urlFilename);
+                    
+                    if (needsSourceChange) {
+                        console.log(`[Seek] Loading audio for ${clipName}:`, audioUrl);
+                        audio.src = audioUrl;
                     }
-
-                    // Play audio if we're in playing state
+                    audio.currentTime = clipRelativeTime;
+                    
+                    // If playing, start audio playback
                     if (isPlaying) {
-                        audio.play().catch(err => console.error('Audio play error:', err));
-                    } else {
-                        audio.pause();
+                        audio.play().catch(err => console.error(`[${clipName}] Audio play error:`, err));
+                        audioStartedRef.current = true;
                     }
                 }
-
-                // Clear seeking flag after a short delay
-                setTimeout(() => {
-                    (video as any).isSeeking = false;
-                }, 100);
+                
+                console.log(`[Seek] ${mode} at timeline ${clampedTime}s, clip time ${clipRelativeTime}s`);
             } else if (mode === 'video') {
-                // For video clip: convert to video time
-                const videoTime = timelineToVideoTime(results.timeline, timelineTime);
+                // For video clip: sync video element
+                const videoTime = timelineToVideoTime(results.timeline, clampedTime);
                 video.currentTime = videoTime;
-
-                if (audio) {
-                    if (previousClip?.name !== clip.name) {
-                        (audio as any).pendingSeekTime = clipRelativeTime;
-                        console.log(`[Seek] video pending seek to ${clipRelativeTime}s (waiting for audio load)`);
-                    } else {
-                        audio.currentTime = clipRelativeTime;
+                
+                // Load and sync audio for video clip
+                if (audio && audioUrl) {
+                    const currentSrc = audio.src || '';
+                    const urlFilename = audioUrl.split('?')[0].split('/').pop() || '';
+                    const needsSourceChange = urlFilename && !currentSrc.includes(urlFilename);
+                    
+                    if (needsSourceChange) {
+                        console.log(`[Seek] Loading audio for ${clipName}:`, audioUrl);
+                        audio.src = audioUrl;
+                    }
+                    audio.currentTime = clipRelativeTime;
+                    
+                    // If playing, start video and audio playback
+                    if (isPlaying) {
+                        video.play().catch(e => console.error('Video play error:', e));
+                        audio.play().catch(err => console.error(`[${clipName}] Audio play error:`, err));
+                        audioStartedRef.current = true;
                     }
                 }
 
-                console.log(`[Seek] video at timeline ${timelineTime}s, video time ${videoTime}s`);
-
-                if (isPlaying) {
-                    video.play().catch(err => console.error('Video play error:', err));
-                    if (audio) audio.play().catch(err => console.error('Audio play error:', err));
-                }
-
-                // Clear seeking flag after video seek completes
-                setTimeout(() => {
-                    (video as any).isSeeking = false;
-                }, 100);
+                console.log(`[Seek] video at timeline ${clampedTime}s, video time ${videoTime}s, clip time ${clipRelativeTime}s`);
             }
+            
+            // Apply effects at the new time position (important for seeking while paused)
+            applyEffectsAtTime(clampedTime);
         } else {
             // Fallback for non-timeline videos
-            video.currentTime = timelineTime;
-            if (audio) audio.currentTime = timelineTime;
-
-            // Clear seeking flag
-            setTimeout(() => {
-                (video as any).isSeeking = false;
-            }, 100);
+            video.currentTime = clampedTime;
+            if (audio) audio.currentTime = clampedTime;
         }
-    }, [generatingSpeech, results, isPlaying, activeClip]);
+    }, [generatingSpeech, results, isPlaying, clipAudioUrls, duration, currentTime, applyEffectsAtTime]);
 
     const handleVolumeChange = useCallback((newVolume: number) => {
         const video = videoRef.current;
@@ -1821,8 +2403,13 @@ export const ProjectScreen: React.FC<ProjectScreenProps> = ({ sessionId }) => {
         try {
             await generateSpeech(sessionId);
 
-            // Refetch session data to get updated generatedAudioUrl fields
-            const sessionResponse = await fetch(`${API_BASE}/recordings/${sessionId}/session/instructions.json`);
+            // Generate a new cache buster for the newly generated audio
+            const newCacheBust = Date.now();
+            setCacheBustVersion(newCacheBust);
+
+            // Refetch session data to get updated generatedAudioUrl fields (with cache-busting)
+            // Use CDN_BASE for the recordings path, not API_BASE
+            const sessionResponse = await fetch(`${CDN_BASE}/recordings/${sessionId}/session/instructions.json?v=${newCacheBust}`);
             const sessionData = await sessionResponse.json();
 
             // Update results with new clip narrations
@@ -1831,18 +2418,13 @@ export const ProjectScreen: React.FC<ProjectScreenProps> = ({ sessionId }) => {
                 narrations: sessionData.narrations
             }));
 
-            // Load clip audio URLs from updated session data
+            // Load clip audio URLs from updated session data with cache-busting
             const clipNarrations = sessionData.narrations;
             if (clipNarrations && Array.isArray(clipNarrations)) {
-                const introClip = clipNarrations.find((c: any) => c.clipName === 'intro');
-                const videoClip = clipNarrations.find((c: any) => c.clipName === 'video');
-                const outroClip = clipNarrations.find((c: any) => c.clipName === 'outro');
-
-                const urls = {
-                    intro: formatCdnUrl(introClip?.generatedAudioUrl),
-                    video: formatCdnUrl(videoClip?.generatedAudioUrl),
-                    outro: formatCdnUrl(outroClip?.generatedAudioUrl)
-                };
+                const urls: Record<string, string | null> = {};
+                for (const clip of clipNarrations) {
+                    urls[clip.clipName] = formatCdnUrl(clip.generatedAudioUrl, newCacheBust);
+                }
 
                 setClipAudioUrls(urls);
 
@@ -1852,7 +2434,7 @@ export const ProjectScreen: React.FC<ProjectScreenProps> = ({ sessionId }) => {
                 // Update hasSpeechGenerated state
                 setHasSpeechGenerated(true);
 
-                console.log('[Audio] Updated clip audio URLs after speech generation (CDN):', urls);
+                console.log('[Audio] Updated clip audio URLs after speech generation (CDN with cache bust):', urls);
             }
 
             // CRITICAL: Reset timeline to start (intro clip at time 0) to play from beginning
@@ -2145,6 +2727,35 @@ export const ProjectScreen: React.FC<ProjectScreenProps> = ({ sessionId }) => {
                     />
                 )}
 
+                {/* Zoom Edit Panel (shown when zoom effect is selected) */}
+                {isZoomSelected && !isVideoSelected && !isTextSelected && selectedZoomEffect && (
+                    <ZoomEditPanel
+                        isOpen={isZoomEditPanelOpen && isZoomSelected}
+                        onClose={handleZoomDeselect}
+                        effect={selectedZoomEffect.effect}
+                        clipName={selectedZoomEffect.clipName}
+                        effectIndex={selectedZoomEffect.effectIndex}
+                        clipStart={(() => {
+                            if (!selectedZoomEffect?.clipName || !results?.displayElements) return 0;
+                            const clip = results.displayElements.find((c: any) => c.clipName === selectedZoomEffect.clipName);
+                            return clip?.clipStart || 0;
+                        })()}
+                        clipEnd={(() => {
+                            if (!selectedZoomEffect?.clipName || !results?.displayElements) return duration;
+                            const clip = results.displayElements.find((c: any) => c.clipName === selectedZoomEffect.clipName);
+                            return clip?.clipEnd || duration;
+                        })()}
+                        recordingWidth={1920}
+                        recordingHeight={1080}
+                        onUpdate={handleZoomEffectUpdate}
+                        onPreview={handleZoomEffectPreview}
+                        onDelete={() => {
+                            handleZoomEffectDelete();
+                            handleZoomDeselect();
+                        }}
+                    />
+                )}
+
                 {/* Transcription Panel (shown when nothing is selected and sidebar is 'script') */}
                 {showTranscriptionPanel && !isVideoSelected && !isTextSelected && (
                     <TranscriptionSection
@@ -2157,7 +2768,8 @@ export const ProjectScreen: React.FC<ProjectScreenProps> = ({ sessionId }) => {
                         isGenerating={generatingSpeech}
                         isRewriting={rewritingScript}
                         hasProcessedAudio={hasSpeechGenerated}
-                        currentTime={currentTime}
+                        currentTimeRef={currentTimeRef}
+                        isPlaying={isPlaying}
                         intro={results?.intro || undefined}
                         outro={results?.outro || undefined}
                     />
@@ -2271,6 +2883,20 @@ export const ProjectScreen: React.FC<ProjectScreenProps> = ({ sessionId }) => {
                     onTextElementResize={handleTextElementResize}
                     onTextElementDelete={handleTextElementDelete}
                     onTextBlockClick={handleTextSelect}
+                    onZoomSelect={handleZoomSelect}
+                    isZoomSelected={isZoomSelected}
+                    selectedZoomEffect={selectedZoomEffect}
+                    onZoomResize={handleZoomResize}
+                    onZoomDelete={(clipName, effectIndex) => {
+                        // Select the zoom effect first, then delete it
+                        const clip = results?.displayElements?.find((c: any) => c.clipName === clipName);
+                        const effect = clip?.effects?.[effectIndex];
+                        if (effect) {
+                            setSelectedZoomEffect({ clipName, effectIndex, effect });
+                            handleZoomEffectDelete();
+                        }
+                    }}
+                    onClipResize={handleClipResize}
                     controls={
                         <VideoControls
                             audioUrl={audioUrl}

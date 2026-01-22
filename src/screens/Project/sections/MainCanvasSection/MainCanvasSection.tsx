@@ -5,6 +5,8 @@ import { AspectRatioDropdown, AspectRatio } from './AspectRatioDropdown';
 import { VideoEditToolbar } from './VideoEditToolbar';
 import { TextEditToolbar } from './TextEditToolbar';
 import { ResizableTextBlock } from './ResizableTextBlock';
+import { ResizableZoomBlock } from './ResizableZoomBlock';
+import { ResizableClipBlock } from './ResizableClipBlock';
 
 export type { AspectRatio };
 
@@ -55,6 +57,14 @@ interface MainCanvasSectionProps {
     onTextDelete?: () => void;
     // Text selection from timeline
     onTextBlockClick?: (clipName: string, elementIndex: number, element: any) => void;
+    // Zoom selection from timeline
+    onZoomSelect?: (clipName: string, effectIndex: number, effect: any) => void;
+    isZoomSelected?: boolean;
+    selectedZoomEffect?: { clipName: string; effectIndex: number; effect: any } | null;
+    onZoomResize?: (clipName: string, effectIndex: number, newStart: number, newEnd: number) => void;
+    onZoomDelete?: (clipName: string, effectIndex: number) => void;
+    // Clip resize (for intro/outro)
+    onClipResize?: (clipName: string, newStart: number, newEnd: number) => void;
 }
 
 const aspectRatioValues: Record<string, string> = {
@@ -84,6 +94,9 @@ interface VisualItem {
     clipStart?: number;
     clipEnd?: number;
     elementIndex?: number;
+    // Additional properties for zoom effects
+    effectIndex?: number;
+    effectData?: any;
 }
 
 export const MainCanvasSection: React.FC<MainCanvasSectionProps> = ({
@@ -124,6 +137,12 @@ export const MainCanvasSection: React.FC<MainCanvasSectionProps> = ({
     onTextAlignChange,
     onTextDelete,
     onTextBlockClick,
+    onZoomSelect,
+    isZoomSelected = false,
+    selectedZoomEffect = null,
+    onZoomResize,
+    onZoomDelete,
+    onClipResize,
 }) => {
     const [isBackgroundPanelOpen, setIsBackgroundPanelOpen] = useState(false);
     const [zoomLevel, setZoomLevel] = useState(50); // 50% on the 0-100% scale (default like Clueso)
@@ -132,8 +151,12 @@ export const MainCanvasSection: React.FC<MainCanvasSectionProps> = ({
         return activeClip?.media?.[0]?.borderRadius ?? 3;
     });
     const timelineRef = React.useRef<HTMLDivElement>(null);
+    const timelineContainerRef = React.useRef<HTMLDivElement>(null);
     const [timelineHeight, setTimelineHeight] = useState(200);
     const [isResizing, setIsResizing] = useState(false);
+    const [isDraggingPlayhead, setIsDraggingPlayhead] = useState(false);
+    // Track which zoom block is being dragged/resized (for showing blocked zones)
+    const [draggingZoomIndex, setDraggingZoomIndex] = useState<number | null>(null);
 
     // Sync roundingValue when activeClip changes
     React.useEffect(() => {
@@ -192,6 +215,47 @@ export const MainCanvasSection: React.FC<MainCanvasSectionProps> = ({
         };
     }, [isResizing]);
 
+    // Playhead drag handlers for smooth scrubbing
+    const handlePlayheadMouseDown = (e: React.MouseEvent) => {
+        e.preventDefault();
+        e.stopPropagation();
+        setIsDraggingPlayhead(true);
+    };
+
+    // Calculate time from mouse position
+    const getTimeFromMouseEvent = React.useCallback((e: MouseEvent | React.MouseEvent) => {
+        const container = timelineContainerRef.current;
+        if (!container) return currentTime;
+        
+        const rect = container.getBoundingClientRect();
+        const scrollLeft = container.scrollLeft;
+        const x = e.clientX - rect.left + scrollLeft;
+        const time = x / pixelsPerSecond;
+        return Math.max(0, Math.min(time, videoDuration));
+    }, [pixelsPerSecond, videoDuration, currentTime]);
+
+    // Effect for playhead dragging
+    React.useEffect(() => {
+        if (!isDraggingPlayhead) return;
+
+        const handleMouseMove = (e: MouseEvent) => {
+            const time = getTimeFromMouseEvent(e);
+            onSeek?.(time);
+        };
+
+        const handleMouseUp = () => {
+            setIsDraggingPlayhead(false);
+        };
+
+        document.addEventListener('mousemove', handleMouseMove);
+        document.addEventListener('mouseup', handleMouseUp);
+
+        return () => {
+            document.removeEventListener('mousemove', handleMouseMove);
+            document.removeEventListener('mouseup', handleMouseUp);
+        };
+    }, [isDraggingPlayhead, getTimeFromMouseEvent, onSeek]);
+
     // Process display elements into visual items with row assignment per clip
     const visualItems = useMemo(() => {
         const items: VisualItem[] = [];
@@ -242,7 +306,13 @@ export const MainCanvasSection: React.FC<MainCanvasSectionProps> = ({
                         label: effect.type === 'zoom' ? 'Zoom' : effect.type,
                         color: effect.type === 'zoom' ? '#3B82F6' : '#6366F1', // Blue for Zoom
                         icon: <Search size={10} className="text-white" />,
-                        row: 0 // Will be assigned below
+                        row: 0, // Will be assigned below
+                        // Zoom-specific properties
+                        clipName: clipName,
+                        clipStart: clipData.clipStart,
+                        clipEnd: clipData.clipEnd,
+                        effectIndex: effIdx,
+                        effectData: effect,
                     });
                 });
             }
@@ -538,18 +608,27 @@ export const MainCanvasSection: React.FC<MainCanvasSectionProps> = ({
                     </div>
                     
                     {/* Timeline Area */}
-                    <div className="flex-1 bg-[#0d0d15] overflow-x-auto overflow-y-hidden flex flex-col">
+                    <div 
+                        ref={timelineContainerRef}
+                        className="flex-1 bg-[#0d0d15] overflow-x-auto overflow-y-hidden flex flex-col"
+                    >
                         {videoDuration > 0 ? (
                             <div className="flex-1 flex flex-col relative overflow-visible" style={{ width: `${Math.max(videoDuration * pixelsPerSecond, 800)}px`, minWidth: '100%' }}>
-                                {/* Global Playhead - spans entire timeline height */}
+                                {/* Global Playhead - spans entire timeline height, draggable */}
                                 <div
-                                    className="absolute top-0 bottom-0 w-px bg-pink-500 pointer-events-none"
+                                    className={`absolute top-0 bottom-0 w-px bg-pink-500 ${isDraggingPlayhead ? 'cursor-grabbing' : ''}`}
                                     style={{ 
                                         left: `${currentTime * pixelsPerSecond}px`,
-                                        zIndex: 100
+                                        zIndex: 100,
+                                        pointerEvents: 'none'
                                     }}
                                 >
-                                    <div className="absolute top-0 -left-1 w-2 h-2 bg-pink-500 rounded-full border border-white shadow-md" />
+                                    {/* Draggable playhead handle */}
+                                    <div 
+                                        className={`absolute top-0 -left-2 w-4 h-4 bg-pink-500 rounded-full border-2 border-white shadow-lg cursor-grab hover:scale-110 transition-transform ${isDraggingPlayhead ? 'cursor-grabbing scale-125' : ''}`}
+                                        style={{ pointerEvents: 'auto' }}
+                                        onMouseDown={handlePlayheadMouseDown}
+                                    />
                                 </div>
 
                                 {/* Time Ruler */}
@@ -636,7 +715,11 @@ export const MainCanvasSection: React.FC<MainCanvasSectionProps> = ({
                                                                 isExternallySelected={isThisSelected}
                                                                 onResize={onTextElementResize || (() => {})}
                                                                 onDelete={onTextElementDelete || (() => {})}
-                                                                onClick={(clipName, elementIndex) => {
+                                                                onClick={(clipName, elementIndex, clickedTime) => {
+                                                                    // Seek to clicked position on the element
+                                                                    if (onSeek && clickedTime !== undefined) {
+                                                                        onSeek(clickedTime);
+                                                                    }
                                                                     // Find the element data from displayElements
                                                                     const clip = displayElements.find((c: any) => c.clipName === clipName);
                                                                     const element = clip?.elements?.[elementIndex];
@@ -648,13 +731,54 @@ export const MainCanvasSection: React.FC<MainCanvasSectionProps> = ({
                                                         );
                                                     }
 
-                                                    // For other items (zoom effects), use same styling as text blocks
+                                                    // For zoom effects, use ResizableZoomBlock
+                                                    if (item.type === 'zoom' && item.clipName && item.effectIndex !== undefined) {
+                                                        // Get all zoom effects in this clip for collision detection
+                                                        const clipData = displayElements.find((c: any) => c.clipName === item.clipName);
+                                                        const allZoomEffects = clipData?.effects?.filter((e: any) => e.type === 'zoom') || [];
+                                                        
+                                                        // Check if this specific zoom is selected
+                                                        const isThisZoomSelected = isZoomSelected && 
+                                                            selectedZoomEffect?.clipName === item.clipName && 
+                                                            selectedZoomEffect?.effectIndex === item.effectIndex;
+                                                        
+                                                        return (
+                                                            <ResizableZoomBlock
+                                                                key={item.id}
+                                                                id={item.id}
+                                                                clipName={item.clipName}
+                                                                effectIndex={item.effectIndex}
+                                                                start={item.start}
+                                                                end={item.end}
+                                                                scale={item.effectData?.scale || 1.4}
+                                                                clipStart={item.clipStart || 0}
+                                                                clipEnd={item.clipEnd || 100}
+                                                                pixelsPerSecond={pixelsPerSecond}
+                                                                row={item.row}
+                                                                isSelected={isThisZoomSelected}
+                                                                allZoomEffects={allZoomEffects}
+                                                                onResize={onZoomResize || (() => {})}
+                                                                onDelete={onZoomDelete || (() => {})}
+                                                                onClick={(clipName, effectIndex, effect) => {
+                                                                    if (onSeek) {
+                                                                        onSeek(item.start);
+                                                                    }
+                                                                    if (onZoomSelect) {
+                                                                        onZoomSelect(clipName, effectIndex, effect);
+                                                                    }
+                                                                }}
+                                                                effectData={item.effectData}
+                                                                onDragStateChange={(isDragging, effIdx) => {
+                                                                    setDraggingZoomIndex(isDragging ? effIdx : null);
+                                                                }}
+                                                            />
+                                                        );
+                                                    }
+
+                                                    // Fallback for other effect types
                                                     const duration = Math.abs(item.end - item.start);
                                                     const left = item.start * pixelsPerSecond;
                                                     const width = Math.max(duration * pixelsPerSecond, 30);
-                                                    
-                                                    // Calculate bottom position based on row index
-                                                    // Each row is 24px high (same as text blocks)
                                                     const bottom = item.row * 24 + 6; 
 
                                                     return (
@@ -673,12 +797,16 @@ export const MainCanvasSection: React.FC<MainCanvasSectionProps> = ({
                                                                 paddingRight: '8px',
                                                             }}
                                                             title={`${item.label} (${item.start.toFixed(1)}s - ${item.end.toFixed(1)}s)`}
+                                                            onClick={() => {
+                                                                if (onSeek) {
+                                                                    onSeek(item.start);
+                                                                }
+                                                            }}
                                                         >
                                                             {item.icon}
                                                             <span className="text-[10px] font-semibold text-white truncate">
                                                                 {item.label}
                                                             </span>
-                                                            {/* Three dots menu for zoom effects */}
                                                             <div className="ml-auto flex-shrink-0">
                                                                 <MoreHorizontal size={14} className="text-white/70" />
                                                             </div>
@@ -689,12 +817,12 @@ export const MainCanvasSection: React.FC<MainCanvasSectionProps> = ({
                                     </div>
                                     </div>
 
-                                    {/* Fixed Bottom Layer: Clip Blocks - compact like Clueso */}
+                                    {/* Fixed Bottom Layer: Clip Blocks - taller as the main base layer */}
                                     <div 
-                                        className="absolute left-0 right-0 bg-[#1e1e2e] border-t border-[#2a2a3e]/50 h-7"
+                                        className="absolute left-0 right-0 bg-[#1e1e2e] border-t border-[#2a2a3e]/50 h-9"
                                         style={{ pointerEvents: 'auto', zIndex: 50, bottom: '0px' }}
                                     >
-                                        <div className="relative h-full" style={{ paddingTop: '1px' }}>
+                                        <div className="relative h-full" style={{ paddingTop: '2px' }}>
                                             {timeline && timeline.length > 0 ? timeline.map((clip, idx) => {
                                                 const duration = Math.abs(clip.end - clip.start);
                                                 const startTime = Math.min(clip.start, clip.end);
@@ -716,30 +844,36 @@ export const MainCanvasSection: React.FC<MainCanvasSectionProps> = ({
                                                     label = '2 Video';
                                                 }
 
-                                                // Use color from JSON if available and specific override needed, 
-                                                // but user requested specific mapping so we stick to the if/else mostly.
-                                                // clip.backgroundColor is available in JSON, we could use it too.
+                                                // Use color from JSON if available
                                                 if (clip.backgroundColor) {
                                                     bgColor = clip.backgroundColor;
                                                 }
 
+                                                // Calculate collision boundaries from adjacent clips
+                                                const sortedTimeline = [...timeline].sort((a, b) => a.start - b.start);
+                                                const sortedIdx = sortedTimeline.findIndex(c => c.name === clip.name);
+                                                const prevClip = sortedIdx > 0 ? sortedTimeline[sortedIdx - 1] : null;
+                                                const nextClip = sortedIdx < sortedTimeline.length - 1 ? sortedTimeline[sortedIdx + 1] : null;
+                                                
+                                                const prevClipEnd = prevClip ? prevClip.end : 0;
+                                                const nextClipStart = nextClip ? nextClip.start : videoDuration;
+
+                                                // Use ResizableClipBlock for all clips (video is non-resizable)
                                                 return (
-                                                    <div
+                                                    <ResizableClipBlock
                                                         key={`clip-${idx}`}
-                                                        className="absolute top-0 h-5 rounded border border-white/10 shadow-sm overflow-hidden cursor-pointer hover:brightness-110 transition-all duration-200"
-                                                        style={{ 
-                                                            left: `${left}px`, 
-                                                            width: `${width}px`,
-                                                            backgroundColor: bgColor
-                                                        }}
-                                                        title={`${label} (${clip.start.toFixed(1)}s - ${clip.end.toFixed(1)}s)`}
-                                                    >
-                                                        <div className="h-full flex flex-col justify-center px-1.5">
-                                                            <span className="text-[8px] font-semibold text-white truncate shadow-black/50 drop-shadow-md">
-                                                                {label}
-                                                            </span>
-                                                        </div>
-                                                    </div>
+                                                        clipName={clip.name}
+                                                        start={clip.start}
+                                                        end={clip.end}
+                                                        backgroundColor={bgColor}
+                                                        label={label}
+                                                        pixelsPerSecond={pixelsPerSecond}
+                                                        isResizable={clip.name !== 'video'}
+                                                        prevClipEnd={prevClipEnd}
+                                                        nextClipStart={nextClipStart}
+                                                        onResize={onClipResize}
+                                                        onSeek={onSeek}
+                                                    />
                                                 );
                                             }) : (
                                                 <div className="absolute inset-0 flex items-center justify-center border-t border-dashed border-gray-700">

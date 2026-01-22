@@ -83,6 +83,9 @@ interface TextElement {
     position: TextPosition;
     dimension: TextDimension;
     style: TextStyle;
+    // Clip boundaries for calculating absolute timeline time
+    clipStart?: number;
+    clipEnd?: number;
 }
 
 interface SelectedTextInfo {
@@ -175,9 +178,15 @@ export const TextOverlayLayer: React.FC<TextOverlayLayerProps> = ({
     }, []);
     
     // Filter active text elements based on current time
-    const activeElements = textElements.filter(
-        element => currentTime >= element.start && currentTime <= element.end
-    );
+    // CRITICAL: Use absolute timeline time (clipStart + relative start/end)
+    const activeElements = textElements.filter(element => {
+        // Calculate absolute start and end times
+        const clipStart = element.clipStart ?? 0;
+        const absoluteStart = clipStart + element.start;
+        const absoluteEnd = clipStart + element.end;
+        
+        return currentTime >= absoluteStart && currentTime <= absoluteEnd;
+    });
 
     // Find clip info for an element
     const findElementClipInfo = useCallback((element: TextElement) => {
