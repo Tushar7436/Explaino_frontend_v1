@@ -67,10 +67,19 @@ export const ResizableClipBlock: React.FC<ResizableClipBlockProps> = ({
 
             if (isResizing === 'left') {
                 // For left resize
-                // Intro clip: start is fixed at 0, left handle shouldn't work
-                // Outro clip: can shrink from left, but must stay after video (prevClipEnd)
-                if (clipName === 'intro') {
-                    // Intro's left edge is fixed at 0, don't allow left resize
+                // Intro clip: start is fixed at 0, left handle controls right edge
+                // Outro clip: end is fixed, left handle controls right edge
+                if (clipName === 'intro' || clipName === 'outro') {
+                    // Map left handle movement to right edge adjustment
+                    // If user drags left handle inward (mouse moves right), shrink from right
+                    // If user drags left handle outward (mouse moves left), expand from right
+                    const dragDelta = timeAtMouse - start; // How much the left handle moved
+                    const newEnd = end - dragDelta; // Apply inverse to right edge
+                    const clampedEnd = Math.max(start + minDuration, newEnd);
+                    
+                    if (Math.abs(clampedEnd - end) > 0.01) {
+                        onResize?.(clipName, start, clampedEnd);
+                    }
                     return;
                 }
                 
@@ -135,8 +144,8 @@ export const ResizableClipBlock: React.FC<ResizableClipBlockProps> = ({
             onMouseEnter={() => setIsHovered(true)}
             onMouseLeave={() => setIsHovered(false)}
         >
-            {/* Left resize handle - only for resizable clips, not for intro */}
-            {isResizable && clipName !== 'intro' && (
+            {/* Left resize handle - only for resizable clips */}
+            {isResizable && (
                 <div
                     data-resize-handle="left"
                     className="absolute left-0 top-0 bottom-0 w-2 cursor-ew-resize z-20 flex items-center justify-center"

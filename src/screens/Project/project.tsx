@@ -100,10 +100,12 @@ export const ProjectScreen: React.FC<ProjectScreenProps> = ({ sessionId }) => {
     const [clipAudioUrls, setClipAudioUrls] = useState<Record<string, string | null>>({});
     const [currentClipAudio, setCurrentClipAudio] = useState<string | null>(null);
     const [hasSpeechGenerated, setHasSpeechGenerated] = useState(false);
+    const speechGeneratedManuallyRef = useRef(false); // Prevents useEffect from overriding after explicit generation
 
     // Reset audio state when sessionId changes (new session)
     useEffect(() => {
         setHasSpeechGenerated(false);
+        speechGeneratedManuallyRef.current = false;
         setClipAudioUrls({});
         setCurrentClipAudio(null);
         setIsVideoSelected(false); // Reset selection on new session
@@ -1376,7 +1378,14 @@ export const ProjectScreen: React.FC<ProjectScreenProps> = ({ sessionId }) => {
         }
 
         // Check if speech has been generated (all clips must have generated audio)
-        setHasSpeechGenerated(allHaveGeneratedAudio);
+        // Don't override if we just manually set it to true via handleGenerateSpeech
+        if (!speechGeneratedManuallyRef.current) {
+            setHasSpeechGenerated(allHaveGeneratedAudio);
+        } else if (allHaveGeneratedAudio) {
+            // If data confirms it's generated, update state and clear the flag
+            setHasSpeechGenerated(true);
+            speechGeneratedManuallyRef.current = false;
+        }
         setClipAudioUrls(urls);
 
         if (allHaveGeneratedAudio) {
@@ -2488,7 +2497,8 @@ export const ProjectScreen: React.FC<ProjectScreenProps> = ({ sessionId }) => {
                 // Force audio reload by clearing current audio
                 setCurrentClipAudio(null);
 
-                // Update hasSpeechGenerated state
+                // Update hasSpeechGenerated state and set flag to prevent useEffect from overriding
+                speechGeneratedManuallyRef.current = true;
                 setHasSpeechGenerated(true);
 
                 console.log('[Audio] Updated clip audio URLs after speech generation (CDN with cache bust):', urls);
