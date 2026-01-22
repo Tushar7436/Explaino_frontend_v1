@@ -802,17 +802,25 @@ export const ProjectScreen: React.FC<ProjectScreenProps> = ({ sessionId }) => {
                         // For OTHER clips that shifted: shift effects/elements by the delta
                         console.log(`[handleClipResize] Shifting ${displayClip.clipName} effects/elements by ${shiftDelta}s`);
                         
-                        const shiftedEffects = (displayClip.effects || []).map((effect: any) => ({
-                            ...effect,
-                            start: effect.start + shiftDelta,
-                            end: effect.end + shiftDelta
-                        }));
+                        const shiftedEffects = (displayClip.effects || []).map((effect: any) => {
+                            const shifted = {
+                                ...effect,
+                                start: effect.start + shiftDelta,
+                                end: effect.end + shiftDelta
+                            };
+                            console.log(`[handleClipResize] Effect shifted: ${effect.start.toFixed(2)} -> ${shifted.start.toFixed(2)}`);
+                            return shifted;
+                        });
 
-                        const shiftedElements = (displayClip.elements || []).map((element: any) => ({
-                            ...element,
-                            start: element.start + shiftDelta,
-                            end: element.end + shiftDelta
-                        }));
+                        const shiftedElements = (displayClip.elements || []).map((element: any) => {
+                            const shifted = {
+                                ...element,
+                                start: element.start + shiftDelta,
+                                end: element.end + shiftDelta
+                            };
+                            console.log(`[handleClipResize] Element "${element.content?.substring(0, 20)}..." shifted: ${element.start.toFixed(2)} -> ${shifted.start.toFixed(2)}`);
+                            return shifted;
+                        });
 
                         updatedClip = {
                             ...updatedClip,

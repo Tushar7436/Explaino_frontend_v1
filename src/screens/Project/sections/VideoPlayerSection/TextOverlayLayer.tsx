@@ -178,14 +178,14 @@ export const TextOverlayLayer: React.FC<TextOverlayLayerProps> = ({
     }, []);
     
     // Filter active text elements based on current time
-    // CRITICAL: Use absolute timeline time (clipStart + relative start/end)
+    // Text element start/end are in ABSOLUTE timeline coordinates (not relative to clip)
     const activeElements = textElements.filter(element => {
-        // Calculate absolute start and end times
-        const clipStart = element.clipStart ?? 0;
-        const absoluteStart = clipStart + element.start;
-        const absoluteEnd = clipStart + element.end;
-        
-        return currentTime >= absoluteStart && currentTime <= absoluteEnd;
+        // Start and end are already absolute timeline times
+        const isActive = currentTime >= element.start && currentTime <= element.end;
+        if (textElements.length > 0) {
+            console.log(`[TextOverlay] Element "${element.content?.substring(0, 20)}...": start=${element.start.toFixed(2)}, end=${element.end.toFixed(2)}, currentTime=${currentTime.toFixed(2)}, isActive=${isActive}`);
+        }
+        return isActive;
     });
 
     // Find clip info for an element
