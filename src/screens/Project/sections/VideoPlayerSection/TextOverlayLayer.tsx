@@ -182,9 +182,6 @@ export const TextOverlayLayer: React.FC<TextOverlayLayerProps> = ({
     const activeElements = textElements.filter(element => {
         // Start and end are already absolute timeline times
         const isActive = currentTime >= element.start && currentTime <= element.end;
-        if (textElements.length > 0) {
-            console.log(`[TextOverlay] Element "${element.content?.substring(0, 20)}...": start=${element.start.toFixed(2)}, end=${element.end.toFixed(2)}, currentTime=${currentTime.toFixed(2)}, isActive=${isActive}`);
-        }
         return isActive;
     });
 
@@ -600,8 +597,6 @@ export const TextOverlayLayer: React.FC<TextOverlayLayerProps> = ({
                selectedTextElement.element.start === element.start &&
                selectedTextElement.element.end === element.end;
     };
-
-    console.log('[TextOverlayLayer] Total elements:', textElements.length, 'Active:', activeElements.length, 'Time:', currentTime);
 
     return (
         <div

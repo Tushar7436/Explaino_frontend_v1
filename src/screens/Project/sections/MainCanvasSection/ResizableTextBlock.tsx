@@ -58,7 +58,7 @@ export const ResizableTextBlock: React.FC<ResizableTextBlockProps> = ({
     const width = Math.max(visualDuration * pixelsPerSecond, 30);
 
     // Calculate bottom position based on row index (each row is 24px)
-    const bottom = row * 24 + 6;
+    const bottom = row * 24 + 2; // small gap from clip layer
 
     // Handle resize start
     const handleResizeStart = useCallback((e: React.MouseEvent, side: 'left' | 'right') => {

@@ -76,7 +76,7 @@ export const ResizableZoomBlock: React.FC<ResizableZoomBlockProps> = ({
     
     const left = visualStart * pixelsPerSecond;
     const width = Math.max(visualDuration * pixelsPerSecond, 30);
-    const bottom = row * 24 + 6;
+    const bottom = row * 24 + 2; // small gap from clip layer
 
     // Is any interaction happening?
     const isInteracting = isDragging || isResizing !== null;

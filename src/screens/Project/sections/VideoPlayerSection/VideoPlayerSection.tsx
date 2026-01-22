@@ -86,8 +86,6 @@ export const VideoLayer: React.FC<VideoLayerProps> = ({
     onTextContentChange,
     displayElements = [],
 }) => {
-    console.log('[VideoLayer] borderRadius:', borderRadius, 'isVideoSelected:', isVideoSelected);
-    
     // Track actual rendered video dimensions for selection border
     const [videoDimensions, setVideoDimensions] = useState<{width: number, height: number} | null>(null);
     

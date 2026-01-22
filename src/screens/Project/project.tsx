@@ -51,10 +51,6 @@ interface RecordingDimensions {
 }
 
 export const ProjectScreen: React.FC<ProjectScreenProps> = ({ sessionId }) => {
-    // ============== COMPONENT MOUNT DEBUG ==============
-    console.log('[ProjectScreen] Component mounting/rendering with sessionId:', sessionId);
-    console.log('[ProjectScreen] Window location:', window.location.href);
-
     // ============== CDN CONFIGURATION ==============
     const CDN_BASE = 'https://cdn.vocallabs.ai';
     const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:8000';
@@ -171,6 +167,8 @@ export const ProjectScreen: React.FC<ProjectScreenProps> = ({ sessionId }) => {
         effect: any;
     } | null>(null);
     const [isZoomEditPanelOpen, setIsZoomEditPanelOpen] = useState(false);
+    // Store original effect value when zoom is selected (for proper change tracking)
+    const originalZoomEffectRef = useRef<any>(null);
 
     // Check if current active clip has media (video/image)
     const currentClipHasMedia = activeClip?.media && activeClip.media.length > 0;
@@ -464,6 +462,8 @@ export const ProjectScreen: React.FC<ProjectScreenProps> = ({ sessionId }) => {
     const handleZoomSelect = useCallback((clipName: string, effectIndex: number, effect: any) => {
         console.log('[handleZoomSelect] Selected zoom effect:', { clipName, effectIndex, effect });
         setSelectedZoomEffect({ clipName, effectIndex, effect });
+        // Store deep copy of original effect for change tracking
+        originalZoomEffectRef.current = JSON.parse(JSON.stringify(effect));
         setIsZoomSelected(true);
         setIsVideoSelected(false); // Deselect video when zoom is selected
         setIsTextSelected(false); // Deselect text when zoom is selected
@@ -475,6 +475,7 @@ export const ProjectScreen: React.FC<ProjectScreenProps> = ({ sessionId }) => {
     const handleZoomDeselect = useCallback(() => {
         console.log('[handleZoomDeselect] Deselecting zoom effect');
         setSelectedZoomEffect(null);
+        originalZoomEffectRef.current = null; // Clear original effect ref
         setIsZoomSelected(false);
         setIsZoomEditPanelOpen(false);
         setActiveSidebarItem('script'); // Return to script panel
@@ -490,58 +491,89 @@ export const ProjectScreen: React.FC<ProjectScreenProps> = ({ sessionId }) => {
 
         const { clipName, effectIndex } = selectedZoomEffect;
         
-        // Get old effect for change tracking
-        const clip = results.displayElements.find((c: any) => c.clipName === clipName);
-        const oldEffect = clip?.effects?.[effectIndex];
-
-        // Track change for undo/redo on final release
-        trackChange({
-            type: 'effect',
-            clipName,
-            path: `displayElements.${clipName}.effects[${effectIndex}]`,
-            oldValue: oldEffect,
-            newValue: { ...oldEffect, ...updates }
+        // Use the ORIGINAL effect stored when zoom was selected (not from current state which may have preview values)
+        const originalEffect = originalZoomEffectRef.current;
+        
+        // Get clip info to compute proper values
+        const clip = results?.displayElements?.find((c: any) => c.clipName === clipName);
+        if (!clip) return;
+        
+        const currentEffect = clip.effects?.[effectIndex];
+        if (!currentEffect) return;
+        
+        console.log('[handleZoomEffectUpdate] currentEffect from state:', {
+            keys: Object.keys(currentEffect),
+            type: currentEffect.type,
+            hasTargetBounds: !!currentEffect.target?.bounds,
+            hasStyle: !!currentEffect.style,
+            hasZoomEnabled: !!currentEffect.style?.zoom?.enabled
         });
+        
+        // Compute the ACTUAL new effect value that will be stored in state
+        let newStart = updates.start ?? currentEffect.start;
+        let newEnd = updates.end ?? currentEffect.end;
+        
+        // Clamp to clip boundaries
+        newStart = Math.max(clip.clipStart, Math.min(newStart, clip.clipEnd));
+        newEnd = Math.max(clip.clipStart, Math.min(newEnd, clip.clipEnd));
+        
+        // Ensure start < end
+        if (newStart >= newEnd) {
+            newEnd = newStart + 0.5; // Minimum 0.5s duration
+        }
+        
+        const actualNewEffect = {
+            ...currentEffect,
+            ...updates,
+            start: newStart,
+            end: newEnd,
+            target: updates.target ? {
+                ...currentEffect.target,
+                bounds: {
+                    ...currentEffect.target?.bounds,
+                    ...updates.target.bounds
+                }
+            } : currentEffect.target
+        };
+        
+        console.log('[handleZoomEffectUpdate] actualNewEffect FULL:', {
+            keys: Object.keys(actualNewEffect),
+            type: actualNewEffect.type,
+            start: actualNewEffect.start,
+            end: actualNewEffect.end,
+            hasTargetBounds: !!actualNewEffect.target?.bounds,
+            hasStyle: !!actualNewEffect.style,
+            hasZoomEnabled: !!actualNewEffect.style?.zoom?.enabled,
+            scale: actualNewEffect.scale
+        });
+        
+        if (originalEffect) {
+            // Track change with the ACTUAL computed value
+            console.log('[handleZoomEffectUpdate] Tracking change for path:', `displayElements[${clipName}].effects[${effectIndex}]`);
+            trackChange({
+                type: 'effect',
+                clipName,
+                path: `displayElements[${clipName}].effects[${effectIndex}]`,
+                oldValue: originalEffect,
+                newValue: actualNewEffect
+            });
+            
+            // Update the original ref to the new value for subsequent changes
+            originalZoomEffectRef.current = actualNewEffect;
+        }
 
         setResults((prev: any) => {
             if (!prev?.displayElements) return prev;
 
-            const updatedDisplayElements = prev.displayElements.map((clip: any) => {
-                if (clip.clipName !== clipName) return clip;
+            const updatedDisplayElements = prev.displayElements.map((clipItem: any) => {
+                if (clipItem.clipName !== clipName) return clipItem;
 
-                const updatedEffects = [...(clip.effects || [])];
+                const updatedEffects = [...(clipItem.effects || [])];
                 if (effectIndex >= 0 && effectIndex < updatedEffects.length) {
-                    const currentEffect = updatedEffects[effectIndex];
-                    
-                    // Validate start/end don't exceed clip boundaries
-                    let newStart = updates.start ?? currentEffect.start;
-                    let newEnd = updates.end ?? currentEffect.end;
-                    
-                    // Clamp to clip boundaries
-                    newStart = Math.max(clip.clipStart, Math.min(newStart, clip.clipEnd));
-                    newEnd = Math.max(clip.clipStart, Math.min(newEnd, clip.clipEnd));
-                    
-                    // Ensure start < end
-                    if (newStart >= newEnd) {
-                        newEnd = newStart + 0.5; // Minimum 0.5s duration
-                    }
-
-                    updatedEffects[effectIndex] = {
-                        ...currentEffect,
-                        ...updates,
-                        start: newStart,
-                        end: newEnd,
-                        target: updates.target ? {
-                            ...currentEffect.target,
-                            bounds: {
-                                ...currentEffect.target?.bounds,
-                                ...updates.target.bounds
-                            }
-                        } : currentEffect.target
-                    };
+                    updatedEffects[effectIndex] = actualNewEffect;
                 }
 
-                return { ...clip, effects: updatedEffects };
+                return { ...clipItem, effects: updatedEffects };
             });
 
             return { ...prev, displayElements: updatedDisplayElements };
@@ -1866,9 +1898,7 @@ export const ProjectScreen: React.FC<ProjectScreenProps> = ({ sessionId }) => {
                 recordingWidth: width,
                 recordingHeight: height
             });
-            // Set aspect ratio to original video dimensions
-            console.log('[Video] Setting aspect ratio to 1920:1080 (original)');
-            setAspectRatio('1920:1080');
+            // Don't override aspectRatio here - it's initialized from timeline.aspectRatio
         };
 
         const handleEnded = () => {
@@ -1905,6 +1935,8 @@ export const ProjectScreen: React.FC<ProjectScreenProps> = ({ sessionId }) => {
 
     // Parse and normalize effects when results are available
     useEffect(() => {
+        console.log('[Effects] useEffect triggered - results:', !!results, 'recordingDimensions:', !!recordingDimensions);
+        
         if (!results) {
             console.log('[Effects] No results yet, skipping effect extraction');
             return;
@@ -2002,15 +2034,32 @@ export const ProjectScreen: React.FC<ProjectScreenProps> = ({ sessionId }) => {
 
     // NOTE: Manual playback loop removed - now using unified RAF playback loop above
 
-    // If backend provides recording dimensions, use them before metadata loads
+    // If backend provides recording dimensions in timeline, use them before metadata loads
     useEffect(() => {
-        if (recordingDimensions) return;
-        const width = (results as any)?.recordingWidth;
-        const height = (results as any)?.recordingHeight;
+        if (recordingDimensions) {
+            console.log('[Recording] Already have dimensions:', recordingDimensions);
+            return;
+        }
+        
+        // Check top-level first
+        let width = (results as any)?.recordingWidth;
+        let height = (results as any)?.recordingHeight;
+        
+        // If not at top level, check in timeline.clips[].media
+        if (!width || !height) {
+            const videoClip = results?.timeline?.clips?.find((c: any) => c.name === 'video');
+            if (videoClip?.media?.[0]) {
+                width = videoClip.media[0].recordingWidth;
+                height = videoClip.media[0].recordingHeight;
+            }
+        }
+        
         if (width && height) {
+            console.log('[Recording] Using backend dimensions from timeline:', width, 'x', height);
             setRecordingDimensions({ recordingWidth: width, recordingHeight: height });
-            setAspectRatio('1920:1080');
-            console.log('[Recording] Using backend dimensions', width, height);
+            // Don't set aspectRatio here - it's initialized separately from timeline.aspectRatio
+        } else {
+            console.log('[Recording] No backend dimensions available, waiting for video metadata...');
         }
     }, [results, recordingDimensions]);
 

@@ -54,7 +54,7 @@ export function useChangeTracking(
       for (let i = 0; i < pathParts.length - 1; i++) {
         const part = pathParts[i];
         
-        // Handle array notation like "clips[intro]"
+        // Handle array notation like "clips[intro]" or "effects[0]"
         const arrayMatch = part.match(/^(\w+)\[(.+)\]$/);
         if (arrayMatch) {
           const [, arrayName, indexOrName] = arrayMatch;
@@ -68,15 +68,23 @@ export function useChangeTracking(
           current = current[arrayName];
           
           if (Array.isArray(current)) {
-            // Find by name property (for clips)
-            const index = current.findIndex((item: any) => item.name === indexOrName);
-            console.log('[ChangeTracking] Found at index:', index, 'in array of length', current.length);
-            if (index >= 0) {
-              current = current[index];
-              console.log('[ChangeTracking] Current object:', current);
+            // Check if indexOrName is a numeric index
+            const numericIndex = parseInt(indexOrName, 10);
+            if (!isNaN(numericIndex) && numericIndex >= 0 && numericIndex < current.length) {
+              // Use numeric index directly
+              current = current[numericIndex];
+              console.log('[ChangeTracking] Found at numeric index:', numericIndex, 'Current object:', current);
             } else {
-              console.error('[ChangeTracking] Item not found in array:', indexOrName);
-              return baseResults;
+              // Find by name property (for clips) or clipName property (for displayElements)
+              const index = current.findIndex((item: any) => item.name === indexOrName || item.clipName === indexOrName);
+              console.log('[ChangeTracking] Found at index:', index, 'in array of length', current.length);
+              if (index >= 0) {
+                current = current[index];
+                console.log('[ChangeTracking] Current object:', current);
+              } else {
+                console.error('[ChangeTracking] Item not found in array:', indexOrName);
+                return baseResults;
+              }
             }
           }
         } else {
@@ -94,15 +102,39 @@ export function useChangeTracking(
       
       if (arrayMatch) {
         const [, arrayName, indexOrName] = arrayMatch;
+        console.log('[ChangeTracking] Final part is array:', arrayName, indexOrName, 'current[arrayName]:', current[arrayName]);
+        
+        if (!current[arrayName]) {
+          console.error('[ChangeTracking] Final array not found:', arrayName, 'in current:', Object.keys(current));
+          return baseResults;
+        }
+        
         if (Array.isArray(current[arrayName])) {
-          const index = current[arrayName].findIndex((item: any) => item.name === indexOrName);
-          if (index >= 0) {
-            current[arrayName][index] = change.newValue;
-            console.log('[ChangeTracking] ✅ Applied array change:', arrayName, indexOrName, '=', change.newValue);
+          // Check if indexOrName is a numeric index
+          const numericIndex = parseInt(indexOrName, 10);
+          if (!isNaN(numericIndex) && numericIndex >= 0 && numericIndex < current[arrayName].length) {
+            // Use numeric index directly - COMPLETE REPLACEMENT
+            const existingEffect = current[arrayName][numericIndex];
+            console.log('[ChangeTracking] RESTORING EFFECT at index', numericIndex);
+            console.log('[ChangeTracking] - Existing effect keys:', Object.keys(existingEffect || {}));
+            console.log('[ChangeTracking] - newValue keys:', Object.keys(change.newValue || {}));
+            console.log('[ChangeTracking] - newValue full:', JSON.stringify(change.newValue));
+            current[arrayName][numericIndex] = change.newValue;
+            console.log('[ChangeTracking] ✅ Applied array change at numeric index:', arrayName, numericIndex);
           } else {
-            console.error('[ChangeTracking] Final array item not found:', indexOrName);
-            return baseResults;
+            // Find by name property (for clips) or clipName property (for displayElements)
+            const index = current[arrayName].findIndex((item: any) => item.name === indexOrName || item.clipName === indexOrName);
+            if (index >= 0) {
+              current[arrayName][index] = change.newValue;
+              console.log('[ChangeTracking] ✅ Applied array change:', arrayName, indexOrName);
+            } else {
+              console.error('[ChangeTracking] Final array item not found:', indexOrName, 'in array of length:', current[arrayName].length);
+              return baseResults;
+            }
           }
+        } else {
+          console.error('[ChangeTracking] current[arrayName] is not an array:', typeof current[arrayName]);
+          return baseResults;
         }
       } else {
         const oldValue = current[lastPart];
@@ -118,14 +150,85 @@ export function useChangeTracking(
     }
   }, []);
 
+  // CRITICAL: Sync initialResults to results when CDN data arrives
+  // This handles the case where useState(initialResults) doesn't update when initialResults changes
+  useEffect(() => {
+    if (!initialResults || !sessionId) return;
+    if (hasInitialLoadRef.current) return; // Already handled
+    
+    console.log('🟢🟢🟢 [ChangeTracking] CDN data now available, checking for backup...');
+    
+    const backupKey = `${BACKUP_KEY_PREFIX}${sessionId}`;
+    const backupJSON = localStorage.getItem(backupKey);
+    
+    if (backupJSON) {
+      try {
+        const backup = JSON.parse(backupJSON);
+        const age = Date.now() - backup.timestamp;
+        
+        console.log('🟢🟢🟢 [ChangeTracking] Found backup:', {
+          age: Math.round(age / 1000) + 's',
+          changes: backup.changeStack?.length || 0,
+          hasResults: !!backup.results
+        });
+        
+        if (age < 86400000 && backup.changeStack && backup.changeStack.length > 0) {
+          console.log('🟢🟢🟢 [ChangeTracking] Replaying', backup.changeStack.length, 'changes on CDN data');
+          
+          setIsMerging(true);
+          
+          // Deep clone CDN data
+          let mergedResults = JSON.parse(JSON.stringify(initialResults));
+          
+          // Replay each change
+          for (const change of backup.changeStack) {
+            console.log('🟢🟢🟢 [ChangeTracking] Replaying:', change.path);
+            mergedResults = applyChangeToResults(mergedResults, change);
+          }
+          
+          console.log('🟢🟢🟢 [ChangeTracking] Setting merged results');
+          setResults(mergedResults);
+          setChangeStack(backup.changeStack);
+          
+          setTimeout(() => setIsMerging(false), 100);
+          hasInitialLoadRef.current = true;
+          return;
+        }
+      } catch (err) {
+        console.error('🟢🟢🟢 [ChangeTracking] Backup parse error:', err);
+      }
+    }
+    
+    // No valid backup, just use CDN data
+    console.log('🟢🟢🟢 [ChangeTracking] No backup, using CDN data directly');
+    setResults(initialResults);
+    hasInitialLoadRef.current = true;
+  }, [initialResults, sessionId, applyChangeToResults]);
+
+  // Legacy merge effect - keeping for reference but the above should handle it
   // When CDN data loads (initialResults changes), merge with localStorage changes
   useEffect(() => {
-    console.log('[ChangeTracking] CDN data received, initialResults:', !!initialResults, 'sessionId:', sessionId);
+    console.log('🔴🔴🔴 [ChangeTracking] useEffect STARTING - CDN data received');
+    console.log('🔴🔴🔴 [ChangeTracking] initialResults:', !!initialResults, 'type:', typeof initialResults, 'sessionId:', sessionId);
+    console.log('🔴🔴🔴 [ChangeTracking] hasInitialLoadRef:', hasInitialLoadRef.current);
     
-    if (!sessionId || !initialResults) {
-      console.log('[ChangeTracking] Skipping merge - no session or no data');
+    // Skip if already handled by the new effect above
+    if (hasInitialLoadRef.current) {
+      console.log('🔴🔴🔴 [ChangeTracking] Already handled, skipping');
       return;
     }
+    
+    if (!sessionId) {
+      console.log('🔴🔴🔴 [ChangeTracking] Skipping merge - no sessionId');
+      return;
+    }
+    
+    if (!initialResults) {
+      console.log('🔴🔴🔴 [ChangeTracking] Skipping merge - no initialResults yet, waiting for CDN data...');
+      return;
+    }
+    
+    console.log('🔴🔴🔴 [ChangeTracking] CDN DATA IS NOW AVAILABLE! Proceeding with restore check...');
 
     // If session changed, reset everything
     if (lastSessionIdRef.current !== sessionId) {
@@ -138,14 +241,15 @@ export function useChangeTracking(
     const backupKey = `${BACKUP_KEY_PREFIX}${sessionId}`;
     const backupJSON = localStorage.getItem(backupKey);
     
-    console.log('[ChangeTracking] Backup key:', backupKey, 'Found backup:', !!backupJSON, 'hasInitialLoadRef:', hasInitialLoadRef.current);
+    console.log('🔴🔴🔴 [ChangeTracking] Backup key:', backupKey);
+    console.log('🔴🔴🔴 [ChangeTracking] Found backup:', !!backupJSON, 'hasInitialLoadRef:', hasInitialLoadRef.current);
 
     if (backupJSON && !hasInitialLoadRef.current) {
       try {
         const backup = JSON.parse(backupJSON);
         const age = Date.now() - backup.timestamp;
 
-        console.log('[ChangeTracking] 📦 Found localStorage backup:', {
+        console.log('🔴🔴🔴 [ChangeTracking] 📦 Found localStorage backup:', {
           age: Math.round(age / 1000) + 's',
           changes: backup.changeStack?.length || 0,
           timestamp: new Date(backup.timestamp).toISOString(),
@@ -155,27 +259,32 @@ export function useChangeTracking(
 
         // Only restore if backup is less than 24 hours old
         if (age < 86400000 && backup.changeStack && backup.changeStack.length > 0) {
-          console.log('[ChangeTracking] 🔄 Restoring backup with', backup.changeStack.length, 'changes...');
+          console.log('🔴🔴🔴 [ChangeTracking] 🔄 Restoring backup with', backup.changeStack.length, 'changes...');
           
           setIsMerging(true);
           
-          // USE THE BACKED UP RESULTS DIRECTLY - they already have changes applied
-          // This ensures text element changes and other complex changes are preserved
-          if (backup.results) {
-            console.log('[ChangeTracking] Using backed-up results directly (already has changes applied)');
-            setResults(backup.results);
-          } else {
-            // Fallback: replay changes if no results in backup (legacy backups)
-            console.log('[ChangeTracking] Fallback: replaying changes on CDN data');
-            let mergedResults = initialResults;
-            for (let i = 0; i < backup.changeStack.length; i++) {
-              const change = backup.changeStack[i];
-              console.log(`[ChangeTracking] Applying change ${i+1}/${backup.changeStack.length}:`, change);
-              mergedResults = applyChangeToResults(mergedResults, change);
-            }
-            setResults(mergedResults);
+          // REPLAY changes on top of FRESH CDN data
+          // This ensures we have the latest structure from CDN with local changes applied
+          console.log('[ChangeTracking] Replaying', backup.changeStack.length, 'changes on fresh CDN data');
+          console.log('[ChangeTracking] Initial CDN displayElements count:', initialResults?.displayElements?.length);
+          console.log('[ChangeTracking] Initial CDN displayElements clips:', initialResults?.displayElements?.map((c: any) => ({ clipName: c.clipName, effectsCount: c.effects?.length })));
+          
+          let mergedResults = JSON.parse(JSON.stringify(initialResults)); // Deep clone
+          
+          for (let i = 0; i < backup.changeStack.length; i++) {
+            const change = backup.changeStack[i];
+            console.log(`[ChangeTracking] Applying change ${i+1}/${backup.changeStack.length}:`, change.path);
+            console.log(`[ChangeTracking] Change newValue type:`, change.newValue?.type, 'has target.bounds:', !!change.newValue?.target?.bounds);
+            const beforeEffects = mergedResults?.displayElements?.find((c: any) => c.clipName === 'video')?.effects?.length;
+            mergedResults = applyChangeToResults(mergedResults, change);
+            const afterEffects = mergedResults?.displayElements?.find((c: any) => c.clipName === 'video')?.effects?.length;
+            console.log(`[ChangeTracking] Video effects count: before=${beforeEffects}, after=${afterEffects}`);
           }
           
+          console.log('[ChangeTracking] After replay, displayElements:', mergedResults?.displayElements?.map((c: any) => ({ clipName: c.clipName, effectsCount: c.effects?.length })));
+          
+          console.log('[ChangeTracking] Applied all changes, setting results');
+          setResults(mergedResults);
           setChangeStack(backup.changeStack);
           
           // Small delay to ensure state updates propagate
@@ -217,6 +326,10 @@ export function useChangeTracking(
     };
     
     console.log('[ChangeTracking] Tracking change:', fullChange);
+    console.log('[ChangeTracking] 📝 STORING newValue with keys:', Object.keys(change.newValue || {}));
+    console.log('[ChangeTracking] 📝 newValue.type:', change.newValue?.type);
+    console.log('[ChangeTracking] 📝 newValue.target?.bounds:', change.newValue?.target?.bounds);
+    console.log('[ChangeTracking] 📝 newValue.style:', change.newValue?.style);
     
     setChangeStack(prev => [...prev, fullChange]);
   }, []);
@@ -277,7 +390,7 @@ export function useChangeTracking(
     setChangeStack([]);
   }, []);
 
-  // Auto-backup to localStorage on every change
+  // Auto-backup to localStorage on every change (immediate - no debounce to prevent data loss)
   useEffect(() => {
     if (!sessionId || !results) return;
     

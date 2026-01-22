@@ -160,8 +160,6 @@ export const MainCanvasSection: React.FC<MainCanvasSectionProps> = ({
 
     // Sync roundingValue when activeClip changes
     React.useEffect(() => {
-        const newValue = activeClip?.media?.[0]?.borderRadius ?? 3;
-        console.log('[MainCanvasSection] Syncing roundingValue from activeClip:', newValue, 'activeClip:', activeClip?.name);
         if (activeClip?.media?.[0]?.borderRadius !== undefined) {
             setRoundingValue(activeClip.media[0].borderRadius);
         } else {
@@ -261,15 +259,7 @@ export const MainCanvasSection: React.FC<MainCanvasSectionProps> = ({
         const items: VisualItem[] = [];
         const sourceData = displayElements?.length > 0 ? displayElements : displayEffects;
 
-        console.log('[Timeline] Processing visual items:', {
-            displayElements,
-            displayEffects,
-            sourceData,
-            sourceDataLength: sourceData?.length
-        });
-
         if (!sourceData || sourceData.length === 0) {
-            console.log('[Timeline] No source data for visual items');
             return [];
         }
 
@@ -278,13 +268,6 @@ export const MainCanvasSection: React.FC<MainCanvasSectionProps> = ({
 
         // 1. Process elements and effects per clip, assigning sequential layers
         sourceData.forEach((clipData: any, clipIdx: number) => {
-            console.log(`[Timeline] Processing clip ${clipIdx}:`, {
-                clipName: clipData.clipName,
-                effects: clipData.effects?.length || 0,
-                elements: clipData.elements?.length || 0,
-                clipData
-            });
-
             const clipName = clipData.clipName || `clip-${clipIdx}`;
             
             // Initialize layer counter for this clip
@@ -351,9 +334,6 @@ export const MainCanvasSection: React.FC<MainCanvasSectionProps> = ({
             });
         });
 
-        console.log('[Timeline] Total visual items created:', items.length, items);
-        console.log('[Timeline] Items after layer assignment:', items);
-
         return items;
     }, [displayElements, displayEffects]);
 
@@ -415,13 +395,9 @@ export const MainCanvasSection: React.FC<MainCanvasSectionProps> = ({
                         <VideoEditToolbar
                             roundingValue={roundingValue}
                             onRoundingChange={(value) => {
-                                console.log('[MainCanvasSection] Slider changed to:', value);
                                 setRoundingValue(value);
                                 if (onBorderRadiusChange) {
-                                    console.log('[MainCanvasSection] Calling onBorderRadiusChange with:', value);
                                     onBorderRadiusChange(value);
-                                } else {
-                                    console.warn('[MainCanvasSection] onBorderRadiusChange is undefined!');
                                 }
                             }}
                         />
@@ -613,7 +589,7 @@ export const MainCanvasSection: React.FC<MainCanvasSectionProps> = ({
                         className="flex-1 bg-[#0d0d15] overflow-x-auto overflow-y-hidden flex flex-col"
                     >
                         {videoDuration > 0 ? (
-                            <div className="flex-1 flex flex-col relative overflow-visible" style={{ width: `${Math.max(videoDuration * pixelsPerSecond, 800)}px`, minWidth: '100%' }}>
+                            <div className="flex-1 flex flex-col relative overflow-visible" style={{ width: `${Math.max(videoDuration * pixelsPerSecond + 16, 800)}px`, minWidth: '100%' }}>
                                 {/* Global Playhead - spans entire timeline height, draggable */}
                                 <div
                                     className={`absolute top-0 bottom-0 w-px bg-pink-500 ${isDraggingPlayhead ? 'cursor-grabbing' : ''}`}
@@ -632,7 +608,7 @@ export const MainCanvasSection: React.FC<MainCanvasSectionProps> = ({
                                 </div>
 
                                 {/* Time Ruler */}
-                                <div className="sticky top-0 z-30 bg-[#1a1a2e] border-b border-[#2a2a3e] flex-shrink-0">
+                                <div className="sticky top-0 z-30 bg-[#1a1a2e] border-b border-[#2a2a3e] flex-shrink-0" style={{ paddingLeft: '8px' }}>
                                     <div className="relative h-5" style={{ width: `${videoDuration * pixelsPerSecond}px` }}>
                                         {Array.from({ length: Math.ceil(videoDuration / timeStep) + 1 }, (_, i) => {
                                             const time = i * timeStep;
@@ -658,8 +634,10 @@ export const MainCanvasSection: React.FC<MainCanvasSectionProps> = ({
                                 >
                                     {/* Upper Layers area - effects/elements, scrollable if many rows */}
                                     <div
-                                        className="absolute top-0 left-0 right-0 bottom-[28px] overflow-y-auto overflow-x-hidden bg-[#0d0d15]"
+                                        className="absolute top-0 right-0 overflow-y-auto overflow-x-hidden bg-[#0d0d15]"
                                         style={{
+                                            left: '8px',
+                                            bottom: '36px',
                                             scrollbarWidth: 'thin',
                                             scrollbarColor: 'rgba(75, 85, 99, 0.5) transparent',
                                             pointerEvents: 'auto',
@@ -779,7 +757,7 @@ export const MainCanvasSection: React.FC<MainCanvasSectionProps> = ({
                                                     const duration = Math.abs(item.end - item.start);
                                                     const left = item.start * pixelsPerSecond;
                                                     const width = Math.max(duration * pixelsPerSecond, 30);
-                                                    const bottom = item.row * 24 + 6; 
+                                                    const bottom = item.row * 24 + 2; // small gap from clip layer 
 
                                                     return (
                                                         <div
@@ -819,8 +797,8 @@ export const MainCanvasSection: React.FC<MainCanvasSectionProps> = ({
 
                                     {/* Fixed Bottom Layer: Clip Blocks - taller as the main base layer */}
                                     <div 
-                                        className="absolute left-0 right-0 bg-[#1e1e2e] border-t border-[#2a2a3e]/50 h-9"
-                                        style={{ pointerEvents: 'auto', zIndex: 50, bottom: '0px' }}
+                                        className="absolute right-0 bg-[#1e1e2e] border-t border-[#2a2a3e]/50 h-9"
+                                        style={{ pointerEvents: 'auto', zIndex: 50, bottom: '0px', left: '8px' }}
                                     >
                                         <div className="relative h-full" style={{ paddingTop: '2px' }}>
                                             {timeline && timeline.length > 0 ? timeline.map((clip, idx) => {
