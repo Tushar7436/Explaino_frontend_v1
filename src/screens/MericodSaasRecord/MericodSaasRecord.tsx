@@ -4,11 +4,15 @@ import { VideoLibrarySection } from "./sections/VideoLibrarySection";
 import { HomeSection } from "./sections/HomeSection/HomeSection";
 import { SettingsSection } from "./sections/SettingsSection/SettingsSection";
 import { ComingSoonSection } from "./sections/ComingSoonSection/ComingSoonSection";
+import { useExtensionIdentityHandoff } from "../../hooks/useExtensionIdentityHandoff";
 
 export const MericodSaasRecord = (): JSX.Element => {
   const [active, setActive] = useState<string>("Home");
   const [isCollapsed, setIsCollapsed] = useState(false);
   const [isDarkMode, setIsDarkMode] = useState(false);
+
+  // Handle identity handoff to extension if opened from extension
+  useExtensionIdentityHandoff();
 
   return (
     <div className={`flex flex-col w-full min-w-[1440px] transition-colors duration-300 ${isDarkMode ? 'dark' : ''} ${isDarkMode ? 'bg-[#070510]' : 'bg-[#fbfbfc]'}`}>
