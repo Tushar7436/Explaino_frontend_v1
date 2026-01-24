@@ -9,7 +9,7 @@ import { useExtensionIdentityHandoff } from "../../hooks/useExtensionIdentityHan
 export const MericodSaasRecord = (): JSX.Element => {
   const [active, setActive] = useState<string>("Home");
   const [isCollapsed, setIsCollapsed] = useState(false);
-  const [isDarkMode, setIsDarkMode] = useState(false);
+  const [isDarkMode, setIsDarkMode] = useState(true);
 
   // Handle identity handoff to extension if opened from extension
   useExtensionIdentityHandoff();

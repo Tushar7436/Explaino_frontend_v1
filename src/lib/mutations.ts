@@ -70,3 +70,16 @@ export const GET_INDUSTRIES_QUERY = `
     }
   }
 `;
+
+export const GET_EXPLAINO_PROJECTS_QUERY = `
+  query GetExplainoProjects($client_id: uuid!) {
+    vocallabs_Explaino_Projects(where: { client_id: { _eq: $client_id } }) {
+      project_name
+      created_at
+      updated_at
+      client_id
+      id
+      session_id
+    }
+  }
+`;

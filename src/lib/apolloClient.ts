@@ -1,11 +1,24 @@
-import { ApolloClient, InMemoryCache, createHttpLink } from '@apollo/client';
+import { ApolloClient, InMemoryCache, createHttpLink } from "@apollo/client";
+import { setContext } from "@apollo/client/link/context";
 
-// Replace with your actual GraphQL endpoint
 const httpLink = createHttpLink({
-    uri: 'https://db.vocallabs.ai/v1/graphql',
+  uri: "https://db.vocallabs.ai/v1/graphql",
+});
+
+const authLink = setContext((_, { headers }) => {
+  const token =
+    localStorage.getItem("auth_token") || localStorage.getItem("access_token");
+
+  return {
+    headers: {
+      ...headers,
+      "content-type": "application/json",
+      authorization: token ? `Bearer ${token}` : "",
+    },
+  };
 });
 
 export const apolloClient = new ApolloClient({
-    link: httpLink,
-    cache: new InMemoryCache(),
+  link: authLink.concat(httpLink),
+  cache: new InMemoryCache(),
 });

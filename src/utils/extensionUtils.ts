@@ -1,6 +1,6 @@
 /* eslint-disable no-undef */
 
-const EXTENSION_ID = "dajchnchedhpjnfnbdhhjihodoaenmhd";
+const EXTENSION_ID = "gbnnmeafnjcnehachodknncffbbbdkpk";
 
 /**
  * Checks if the Explaino extension is installed and ready.

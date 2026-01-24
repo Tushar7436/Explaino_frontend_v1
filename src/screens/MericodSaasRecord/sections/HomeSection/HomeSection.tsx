@@ -3,7 +3,6 @@ import {
   Languages,
   Scissors,
   Sparkles,
-  Upload,
   Video,
   Zap,
 } from "lucide-react";
@@ -12,41 +11,85 @@ import { Avatar, AvatarFallback } from "../../../../components/ui/avatar";
 import { Badge } from "../../../../components/ui/badge";
 import { Card, CardContent } from "../../../../components/ui/card";
 import { checkExtensionConnection, openExtension } from "../../../../utils/extensionUtils";
+import { fetchExplainoProjects } from "../../../../services/graphql-api";
 
-const projects = [
-  {
-    display_title: "Vercel Project Deployment Tool",
-    owner_details: { name: "Tushar Agarwal", email: "tushar7436@gmail.com" },
-    updated_at: "13 Jan 2026",
-    created_at: "21 Dec 2025",
-    status: "Unpublished",
-  },
-  {
-    display_title: "GitHub Project Overview",
-    owner_details: { name: "Tushar Agarwal", email: "tushar7436@gmail.com" },
-    updated_at: "2 Jan 2026",
-    created_at: "22 Dec 2025",
-    status: "Unpublished",
-  },
-  {
-    display_title: "Deploying Projects Using Vercel",
-    owner_details: { name: "Tushar Agarwal", email: "tushar7436@gmail.com" },
-    updated_at: "21 Dec 2025",
-    created_at: "2 Dec 2025",
-    status: "Unpublished",
-  },
-];
+interface Project {
+  project_name: string;
+  created_at: string;
+  updated_at: string;
+  client_id: string;
+  id: string;
+  session_id: string;
+}
+
+const formatDate = (dateString: string): string => {
+  try {
+    const date = new Date(dateString);
+    
+    // Format as "23 Jan 2026"
+    return date.toLocaleDateString("en-US", { 
+      day: "numeric", 
+      month: "short", 
+      year: "numeric"
+    });
+  } catch {
+    return dateString;
+  }
+};
 
 export const HomeSection = (): JSX.Element => {
+  const [greeting, setGreeting] = React.useState("Good morning");
+  const [userName, setUserName] = React.useState("User");
+  const [projects, setProjects] = React.useState<Project[]>([]);
+  const [loading, setLoading] = React.useState(true);
+
+  React.useEffect(() => {
+    // Set greeting
+    const hour = new Date().getHours();
+    if (hour < 12) setGreeting("Good morning");
+    else if (hour < 18) setGreeting("Good afternoon");
+    else setGreeting("Good evening");
+
+    // Set user name
+    const storedName = localStorage.getItem("user_name");
+    if (storedName) {
+      // If full name, take first name for a friendlier greeting
+      const firstName = storedName.split(' ')[0];
+      setUserName(firstName);
+    }
+
+    // Fetch projects
+    const loadProjects = async () => {
+      const clientId = localStorage.getItem("user_id");
+      if (clientId) {
+        const fetchedProjects = await fetchExplainoProjects(clientId);
+        if (fetchedProjects) {
+          setProjects(fetchedProjects);
+        }
+      }
+      setLoading(false);
+    };
+
+    loadProjects();
+  }, []);
+
   return (
     <div className="flex-1 w-full min-h-screen bg-[#0B0C15] text-white p-10 font-[Inter] overflow-y-auto">
       {/* Header Banner */}
-      <div className="w-full h-[240px] rounded-3xl relative overflow-hidden mb-12 bg-gradient-to-r from-[#17132B] to-[#120F24] border border-[#2A2B35]">
+      <div
+        className="w-full h-[240px] rounded-3xl relative overflow-hidden mb-12 bg-cover bg-center border border-[#2A2B35]"
+        style={{
+          backgroundImage: "url('https://cdn.vocallabs.ai/landing_page/8145065f-c555-4433-b5ee-860ed950083b.png')"
+        }}
+      >
         {/* Abstract Bloom Effects to simulate floral */}
         <div className="absolute -left-20 -top-20 w-80 h-80 bg-purple-600/30 rounded-full blur-3xl" />
         <div className="absolute -right-20 -top-20 w-80 h-80 bg-pink-600/30 rounded-full blur-3xl" />
 
         <div className="relative z-10 w-full h-full flex flex-col items-center justify-center text-center px-4">
+          <h2 className="text-2xl md:text-3xl font-semibold mb-2 tracking-tight">
+            {greeting}, {userName}!
+          </h2>
           <h1 className="text-4xl md:text-5xl font-bold mb-4 tracking-tight">
             Make something awesome
           </h1>
@@ -88,15 +131,12 @@ export const HomeSection = (): JSX.Element => {
                 <div className="w-10 h-1 bg-yellow-500 rounded-full mt-auto" />
               </div>
               {/* Right side Graphics */}
-              <div className="w-[160px] h-full relative bg-[#1C192E] flex items-center justify-center overflow-hidden">
-                <div className="w-[120%] h-[80%] bg-[#2A2640] rounded-lg border border-[#3A3650] absolute -right-6 top-6 transform -rotate-3 transition-transform group-hover:rotate-0" />
-                <div className="w-[120%] h-[80%] bg-[#221f36] rounded-lg border border-[#3A3650] absolute -right-10 top-10 transform rotate-2 opacity-50" />
-
-                <div className="absolute bottom-4 right-6 bg-[#3A2640] px-2 py-1 rounded flex items-center gap-1.5 border border-red-500/20 shadow-lg z-20">
-                  <div className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse" />
-                  <span className="text-[10px] font-bold text-gray-200">REC</span>
-                </div>
-              </div>
+              <div
+                className="w-[180px] h-full relative bg-contain bg-center bg-no-repeat"
+                style={{
+                  backgroundImage: "url('https://cdn.vocallabs.ai/landing_page/f6964f25-d56d-46ad-a309-3fbf420e2278.png')"
+                }}
+              />
             </CardContent>
           </Card>
 
@@ -110,16 +150,12 @@ export const HomeSection = (): JSX.Element => {
                 </p>
               </div>
               {/* Right side Graphics */}
-              <div className="w-[160px] h-full relative bg-[#1C192E] flex items-center justify-center overflow-hidden">
-                <div className="absolute inset-0 flex items-center justify-center">
-                  <div className="w-28 h-20 bg-[#2A2640] rounded-lg border border-[#3A3650] border-dashed flex items-center justify-center transform rotate-6 transition-transform group-hover:rotate-0">
-                    <Upload className="text-gray-500 w-8 h-8" />
-                  </div>
-                </div>
-                {/* Decorative elements */}
-                <div className="absolute top-2 right-2 w-2 h-2 rounded-full bg-blue-500/20" />
-                <div className="absolute bottom-4 left-4 w-4 h-4 rounded-full border border-gray-600/30" />
-              </div>
+              <div
+                className="w-[160px] h-full relative bg-contain bg-center bg-no-repeat"
+                style={{
+                  backgroundImage: "url('https://cdn.vocallabs.ai/landing_page/433f7c14-ff1a-43ca-86ff-3289b7272fa6.png')"
+                }}
+              />
             </CardContent>
           </Card>
 
@@ -133,13 +169,12 @@ export const HomeSection = (): JSX.Element => {
                 </p>
               </div>
               {/* Right side Graphics */}
-              <div className="w-[160px] h-full relative bg-[#1C192E] flex items-center justify-center overflow-hidden">
-                <div className="absolute top-8 right-8 flex flex-col gap-2 opacity-60">
-                  <div className="w-24 h-12 bg-[#3A3650] rounded border border-gray-600/20 transform -rotate-2" />
-                  <div className="w-24 h-12 bg-[#3A3650] rounded border border-gray-600/20 transform rotate-1" />
-                </div>
-                <div className="absolute top-6 right-10 w-28 h-24 bg-gradient-to-br from-[#C4B5FD]/10 to-transparent border border-[#C4B5FD]/10 rounded-lg backdrop-blur-[2px] transform rotate-3 transition-transform group-hover:rotate-0" />
-              </div>
+              <div
+                className="w-[160px] h-full relative bg-contain bg-center bg-no-repeat"
+                style={{
+                  backgroundImage: "url('https://cdn.vocallabs.ai/landing_page/aa343b2c-284b-45ff-89f2-44976d9f24c6.png')"
+                }}
+              />
             </CardContent>
           </Card>
         </div>
@@ -221,52 +256,64 @@ export const HomeSection = (): JSX.Element => {
 
           {/* Table Body */}
           <div className="flex flex-col">
-            {projects.map((project, index) => (
-              <div
-                key={index}
-                className="grid grid-cols-12 gap-4 p-5 border-b border-[#2A2B35] last:border-0 items-center hover:bg-[#1C1D26] transition-colors group cursor-pointer"
-              >
-                {/* Project Name */}
-                <div className="col-span-5 font-semibold text-white pl-4 group-hover:text-[#EC4899] transition-colors">
-                  {project.display_title}
-                </div>
-
-                {/* Creator */}
-                <div className="col-span-3 flex items-center gap-3">
-                  <Avatar className="h-9 w-9 border-2 border-[#0B0C15]">
-                    <AvatarFallback className="bg-[#14b8a6] text-white font-medium text-sm">
-                      {project.owner_details.name.charAt(0)}
-                    </AvatarFallback>
-                  </Avatar>
-                  <div className="flex flex-col">
-                    <span className="text-sm font-medium text-white leading-tight">
-                      {project.owner_details.name}
-                    </span>
-                    <span className="text-xs text-gray-500 mt-0.5">
-                      {project.owner_details.email}
-                    </span>
-                  </div>
-                </div>
-
-                {/* Dates */}
-                <div className="col-span-1 text-sm text-gray-400 font-medium">
-                  {project.updated_at}
-                </div>
-                <div className="col-span-1 text-sm text-gray-400 font-medium">
-                  {project.created_at}
-                </div>
-
-                {/* Status Badge */}
-                <div className="col-span-2 pl-4">
-                  <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-[#1C1D26] border border-[#2A2B35]">
-                    <div className="w-2 h-2 rounded-full bg-gray-500" />
-                    <span className="text-xs font-medium text-gray-300">
-                      {project.status}
-                    </span>
-                  </div>
-                </div>
+            {loading ? (
+              <div className="p-8 text-center text-gray-400">
+                Loading projects...
               </div>
-            ))}
+            ) : projects.length === 0 ? (
+              <div className="p-8 text-center text-gray-400">
+                No projects yet. Create your first project!
+              </div>
+            ) : (
+              projects.map((project) => (
+                <div
+                  key={project.id}
+                  className="grid grid-cols-12 gap-4 p-5 border-b border-[#2A2B35] last:border-0 items-center hover:bg-[#1C1D26] transition-colors group cursor-pointer"
+                >
+                  {/* Project Name */}
+                  <div className="col-span-5 font-semibold text-white pl-4 group-hover:text-[#EC4899] transition-colors">
+                    {project.project_name}
+                  </div>
+
+                  {/* Creator - Using current user */}
+                  <div className="col-span-3 flex items-center gap-3">
+                    <Avatar className="h-9 w-9 border-2 border-[#0B0C15]">
+                      <AvatarFallback className="bg-[#14b8a6] text-white font-medium text-sm">
+                        {(localStorage.getItem("user_name") || "U").charAt(0)}
+                      </AvatarFallback>
+                    </Avatar>
+                    <div className="flex flex-col">
+                      <span className="text-sm font-medium text-white leading-tight">
+                        {localStorage.getItem("user_name") || "You"}
+                      </span>
+                      <span className="text-xs text-gray-500 mt-0.5">
+                        {localStorage.getItem("user_email") || localStorage.getItem("email") || "user@example.com"}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Updated Date */}
+                  <div className="col-span-1 text-sm text-gray-400 font-medium">
+                    {formatDate(project.updated_at)}
+                  </div>
+
+                  {/* Created Date */}
+                  <div className="col-span-1 text-sm text-gray-400 font-medium">
+                    {formatDate(project.created_at)}
+                  </div>
+
+                  {/* Status Badge */}
+                  <div className="col-span-2 pl-4">
+                    <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-[#1C1D26] border border-[#2A2B35]">
+                      <div className="w-2 h-2 rounded-full bg-gray-500" />
+                      <span className="text-xs font-medium text-gray-300">
+                        In Progress
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              ))
+            )}
           </div>
         </div>
       </div>
