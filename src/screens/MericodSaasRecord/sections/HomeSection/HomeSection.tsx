@@ -6,11 +6,12 @@ import {
   Video,
   Zap,
 } from "lucide-react";
-import React from "react";
+import React, { useState, useEffect } from "react";
 import { Avatar, AvatarFallback } from "../../../../components/ui/avatar";
 import { Badge } from "../../../../components/ui/badge";
 import { Card, CardContent } from "../../../../components/ui/card";
 import { checkExtensionConnection, openExtension } from "../../../../utils/extensionUtils";
+<<<<<<< HEAD
 import { fetchExplainoProjects } from "../../../../services/graphql-api";
 
 interface Project {
@@ -68,6 +69,37 @@ export const HomeSection = (): JSX.Element => {
         }
       }
       setLoading(false);
+=======
+import { fetchProjectData } from "../../../../services/backend-api";
+
+export const HomeSection = (): JSX.Element => {
+  const [projects, setProjects] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+
+  useEffect(() => {
+    const loadProjects = async () => {
+      try {
+        setLoading(true);
+        const clientId = localStorage.getItem("id");
+        console.log("HomeSection - Client ID retrieved from localStorage:", clientId);
+        
+        if (clientId) {
+          console.log("HomeSection - Making API call to fetch project data...");
+          const projectData = await fetchProjectData(clientId);
+          console.log("HomeSection - API response received:", projectData);
+          setProjects(projectData.data?.projects || []);
+          console.log("HomeSection - Projects set:", projectData.data?.projects || []);
+        } else {
+          console.log("HomeSection - No client ID found in localStorage");
+        }
+      } catch (err) {
+        setError(err.message);
+        console.error("HomeSection - Failed to fetch project data:", err);
+      } finally {
+        setLoading(false);
+      }
+>>>>>>> 24538221645b56ba8424bcb6453ada30be777e6c
     };
 
     loadProjects();
@@ -259,6 +291,7 @@ export const HomeSection = (): JSX.Element => {
             {loading ? (
               <div className="p-8 text-center text-gray-400">
                 Loading projects...
+<<<<<<< HEAD
               </div>
             ) : projects.length === 0 ? (
               <div className="p-8 text-center text-gray-400">
@@ -313,6 +346,64 @@ export const HomeSection = (): JSX.Element => {
                   </div>
                 </div>
               ))
+=======
+              </div>
+            ) : error ? (
+              <div className="p-8 text-center text-red-400">
+                Error loading projects: {error}
+              </div>
+            ) : projects.length === 0 ? (
+              <div className="p-8 text-center text-gray-400">
+                No projects found
+              </div>
+            ) : (
+              projects.map((project, index) => (
+              <div
+                key={project.id || index}
+                className="grid grid-cols-12 gap-4 p-5 border-b border-[#2A2B35] last:border-0 items-center hover:bg-[#1C1D26] transition-colors group cursor-pointer"
+              >
+                {/* Project Name */}
+                <div className="col-span-5 font-semibold text-white pl-4 group-hover:text-[#EC4899] transition-colors">
+                  {project.project_name || project.display_title || 'Untitled Project'}
+                </div>
+
+                {/* Creator */}
+                <div className="col-span-3 flex items-center gap-3">
+                  <Avatar className="h-9 w-9 border-2 border-[#0B0C15]">
+                    <AvatarFallback className="bg-[#14b8a6] text-white font-medium text-sm">
+                      {(project.owner_details?.name || 'U').charAt(0)}
+                    </AvatarFallback>
+                  </Avatar>
+                  <div className="flex flex-col">
+                    <span className="text-sm font-medium text-white leading-tight">
+                      {project.owner_details?.name || 'Unknown User'}
+                    </span>
+                    <span className="text-xs text-gray-500 mt-0.5">
+                      {project.owner_details?.email || ''}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Dates */}
+                <div className="col-span-1 text-sm text-gray-400 font-medium">
+                  {project.updated_at ? new Date(project.updated_at).toLocaleDateString() : ''}
+                </div>
+                <div className="col-span-1 text-sm text-gray-400 font-medium">
+                  {project.created_at ? new Date(project.created_at).toLocaleDateString() : ''}
+                </div>
+
+                {/* Status Badge */}
+                <div className="col-span-2 pl-4">
+                  <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-[#1C1D26] border border-[#2A2B35]">
+                    <div className="w-2 h-2 rounded-full bg-gray-500" />
+                    <span className="text-xs font-medium text-gray-300">
+                      {project.status || 'Unpublished'}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            ))
+>>>>>>> 24538221645b56ba8424bcb6453ada30be777e6c
             )}
           </div>
         </div>

@@ -137,6 +137,7 @@ export const ZoomEditPanel: React.FC<ZoomEditPanelProps> = ({
             const newX = newCenterX - bounds.width / 2;
             const newY = newCenterY - bounds.height / 2;
 
+            console.log('[ZoomEditPanel] handleDragEnd - calling onUpdate with bounds:', { x: Math.round(newX), y: Math.round(newY), width: bounds.width, height: bounds.height });
             onUpdate({
                 target: {
                     bounds: {
@@ -166,6 +167,7 @@ export const ZoomEditPanel: React.FC<ZoomEditPanelProps> = ({
     const handleScaleRelease = useCallback(() => {
         if (isSliding) {
             // On release, save to parent/storage
+            console.log('[ZoomEditPanel] handleScaleRelease - calling onUpdate with scale:', localScale);
             onUpdate({ scale: localScale });
         }
         setIsSliding(false);

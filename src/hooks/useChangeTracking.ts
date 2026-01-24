@@ -208,15 +208,14 @@ export function useChangeTracking(
   // Legacy merge effect - keeping for reference but the above should handle it
   // When CDN data loads (initialResults changes), merge with localStorage changes
   useEffect(() => {
+    // IMPORTANT: Skip this entire effect if already handled by the primary effect above
+    if (hasInitialLoadRef.current) {
+      return;
+    }
+    
     console.log('🔴🔴🔴 [ChangeTracking] useEffect STARTING - CDN data received');
     console.log('🔴🔴🔴 [ChangeTracking] initialResults:', !!initialResults, 'type:', typeof initialResults, 'sessionId:', sessionId);
     console.log('🔴🔴🔴 [ChangeTracking] hasInitialLoadRef:', hasInitialLoadRef.current);
-    
-    // Skip if already handled by the new effect above
-    if (hasInitialLoadRef.current) {
-      console.log('🔴🔴🔴 [ChangeTracking] Already handled, skipping');
-      return;
-    }
     
     if (!sessionId) {
       console.log('🔴🔴🔴 [ChangeTracking] Skipping merge - no sessionId');
