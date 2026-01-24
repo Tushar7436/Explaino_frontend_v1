@@ -182,7 +182,7 @@ export const ProjectScreen: React.FC<ProjectScreenProps> = ({ sessionId }) => {
     const handleAspectRatioChange = (newRatio: AspectRatio) => {
         console.log('[handleAspectRatioChange] Called with value:', newRatio);
         const oldRatio = aspectRatio;
-        
+
         // Update local state
         setAspectRatio(newRatio);
 
@@ -266,7 +266,7 @@ export const ProjectScreen: React.FC<ProjectScreenProps> = ({ sessionId }) => {
         }
 
         const currentScale = activeClip.media[0]?.scale ?? 85;
-        
+
         // Store initial scale when drag starts (for change tracking)
         if (initialScaleForTracking === null) {
             setInitialScaleForTracking(currentScale);
@@ -492,17 +492,17 @@ export const ProjectScreen: React.FC<ProjectScreenProps> = ({ sessionId }) => {
         if (!selectedZoomEffect || !results?.displayElements) return;
 
         const { clipName, effectIndex } = selectedZoomEffect;
-        
+
         // Use the ORIGINAL effect stored when zoom was selected (not from current state which may have preview values)
         const originalEffect = originalZoomEffectRef.current;
-        
+
         // Get clip info to compute proper values
         const clip = results?.displayElements?.find((c: any) => c.clipName === clipName);
         if (!clip) return;
-        
+
         const currentEffect = clip.effects?.[effectIndex];
         if (!currentEffect) return;
-        
+
         console.log('[handleZoomEffectUpdate] currentEffect from state:', {
             keys: Object.keys(currentEffect),
             type: currentEffect.type,
@@ -510,20 +510,20 @@ export const ProjectScreen: React.FC<ProjectScreenProps> = ({ sessionId }) => {
             hasStyle: !!currentEffect.style,
             hasZoomEnabled: !!currentEffect.style?.zoom?.enabled
         });
-        
+
         // Compute the ACTUAL new effect value that will be stored in state
         let newStart = updates.start ?? currentEffect.start;
         let newEnd = updates.end ?? currentEffect.end;
-        
+
         // Clamp to clip boundaries
         newStart = Math.max(clip.clipStart, Math.min(newStart, clip.clipEnd));
         newEnd = Math.max(clip.clipStart, Math.min(newEnd, clip.clipEnd));
-        
+
         // Ensure start < end
         if (newStart >= newEnd) {
             newEnd = newStart + 0.5; // Minimum 0.5s duration
         }
-        
+
         const actualNewEffect = {
             ...currentEffect,
             ...updates,
@@ -537,7 +537,7 @@ export const ProjectScreen: React.FC<ProjectScreenProps> = ({ sessionId }) => {
                 }
             } : currentEffect.target
         };
-        
+
         console.log('[handleZoomEffectUpdate] actualNewEffect FULL:', {
             keys: Object.keys(actualNewEffect),
             type: actualNewEffect.type,
@@ -548,7 +548,7 @@ export const ProjectScreen: React.FC<ProjectScreenProps> = ({ sessionId }) => {
             hasZoomEnabled: !!actualNewEffect.style?.zoom?.enabled,
             scale: actualNewEffect.scale
         });
-        
+
         if (originalEffect) {
             // Track change with the ACTUAL computed value
             console.log('[handleZoomEffectUpdate] Tracking change for path:', `displayElements[${clipName}].effects[${effectIndex}]`);
@@ -559,13 +559,18 @@ export const ProjectScreen: React.FC<ProjectScreenProps> = ({ sessionId }) => {
                 oldValue: originalEffect,
                 newValue: actualNewEffect
             });
-            
+
             // Update the original ref to the new value for subsequent changes
             originalZoomEffectRef.current = actualNewEffect;
         }
 
+        console.log('[handleZoomEffectUpdate] Calling setResults with actualNewEffect:', actualNewEffect);
         setResults((prev: any) => {
-            if (!prev?.displayElements) return prev;
+            console.log('[handleZoomEffectUpdate] setResults callback - prev:', !!prev, 'prev.displayElements:', !!prev?.displayElements);
+            if (!prev?.displayElements) {
+                console.log('[handleZoomEffectUpdate] ❌ No displayElements in prev, returning unchanged');
+                return prev;
+            }
 
             const updatedDisplayElements = prev.displayElements.map((clipItem: any) => {
                 if (clipItem.clipName !== clipName) return clipItem;
@@ -573,11 +578,13 @@ export const ProjectScreen: React.FC<ProjectScreenProps> = ({ sessionId }) => {
                 const updatedEffects = [...(clipItem.effects || [])];
                 if (effectIndex >= 0 && effectIndex < updatedEffects.length) {
                     updatedEffects[effectIndex] = actualNewEffect;
+                    console.log('[handleZoomEffectUpdate] ✅ Updated effect at index', effectIndex, 'in clip', clipName);
                 }
 
                 return { ...clipItem, effects: updatedEffects };
             });
 
+            console.log('[handleZoomEffectUpdate] ✅ Returning updated results with new displayElements');
             return { ...prev, displayElements: updatedDisplayElements };
         });
 
@@ -620,15 +627,15 @@ export const ProjectScreen: React.FC<ProjectScreenProps> = ({ sessionId }) => {
                 const updatedEffects = [...(clip.effects || [])];
                 if (effectIndex >= 0 && effectIndex < updatedEffects.length) {
                     const currentEffect = updatedEffects[effectIndex];
-                    
+
                     // Validate start/end don't exceed clip boundaries
                     let newStart = updates.start ?? currentEffect.start;
                     let newEnd = updates.end ?? currentEffect.end;
-                    
+
                     // Clamp to clip boundaries
                     newStart = Math.max(clip.clipStart, Math.min(newStart, clip.clipEnd));
                     newEnd = Math.max(clip.clipStart, Math.min(newEnd, clip.clipEnd));
-                    
+
                     // Ensure start < end
                     if (newStart >= newEnd) {
                         newEnd = newStart + 0.5; // Minimum 0.5s duration
@@ -700,22 +707,38 @@ export const ProjectScreen: React.FC<ProjectScreenProps> = ({ sessionId }) => {
     const handleZoomResize = useCallback((clipName: string, effectIndex: number, newStart: number, newEnd: number) => {
         if (!results?.displayElements) return;
 
+        // Find the clip and get the old effect value for change tracking
+        const clip = results.displayElements.find((c: any) => c.clipName === clipName);
+        if (!clip || !clip.effects || effectIndex < 0 || effectIndex >= clip.effects.length) return;
+
+        const oldEffect = clip.effects[effectIndex];
+        const newEffect = {
+            ...oldEffect,
+            start: newStart,
+            end: newEnd,
+        };
+
+        // Track the change for persistence
+        trackChange({
+            type: 'effect',
+            clipName,
+            path: `displayElements[${clipName}].effects[${effectIndex}]`,
+            oldValue: oldEffect,
+            newValue: newEffect
+        });
+
         setResults((prev: any) => {
             if (!prev?.displayElements) return prev;
 
-            const updatedDisplayElements = prev.displayElements.map((clip: any) => {
-                if (clip.clipName !== clipName) return clip;
+            const updatedDisplayElements = prev.displayElements.map((clipItem: any) => {
+                if (clipItem.clipName !== clipName) return clipItem;
 
-                const updatedEffects = [...(clip.effects || [])];
+                const updatedEffects = [...(clipItem.effects || [])];
                 if (effectIndex >= 0 && effectIndex < updatedEffects.length) {
-                    updatedEffects[effectIndex] = {
-                        ...updatedEffects[effectIndex],
-                        start: newStart,
-                        end: newEnd,
-                    };
+                    updatedEffects[effectIndex] = newEffect;
                 }
 
-                return { ...clip, effects: updatedEffects };
+                return { ...clipItem, effects: updatedEffects };
             });
 
             return { ...prev, displayElements: updatedDisplayElements };
@@ -725,10 +748,10 @@ export const ProjectScreen: React.FC<ProjectScreenProps> = ({ sessionId }) => {
         if (selectedZoomEffect?.clipName === clipName && selectedZoomEffect?.effectIndex === effectIndex) {
             setSelectedZoomEffect(prev => prev ? {
                 ...prev,
-                effect: { ...prev.effect, start: newStart, end: newEnd }
+                effect: newEffect
             } : null);
         }
-    }, [results, selectedZoomEffect]);
+    }, [results, selectedZoomEffect, trackChange]);
 
     // Handler for resizing clips (intro/outro) from timeline
     // When shrinking a clip:
@@ -743,7 +766,7 @@ export const ProjectScreen: React.FC<ProjectScreenProps> = ({ sessionId }) => {
 
             // Sort clips by start time to ensure proper order
             const sortedClips = [...prev.timeline.clips].sort((a: any, b: any) => a.start - b.start);
-            
+
             // Find the clip being resized
             const clipIndex = sortedClips.findIndex((c: any) => c.name === clipName);
             if (clipIndex === -1) return prev;
@@ -773,7 +796,7 @@ export const ProjectScreen: React.FC<ProjectScreenProps> = ({ sessionId }) => {
             for (const clip of updatedClips) {
                 clipBoundariesMap[clip.name] = { start: clip.start, end: clip.end };
             }
-            
+
             console.log('[handleClipResize] Clip boundaries map:', clipBoundariesMap);
             console.log('[handleClipResize] DisplayElements before update:', prev.displayElements);
 
@@ -804,7 +827,7 @@ export const ProjectScreen: React.FC<ProjectScreenProps> = ({ sessionId }) => {
                             const effectDuration = effect.end - effect.start;
                             let newEffectStart = Math.max(newBounds.start, Math.min(effect.start, newBounds.end - 0.1));
                             let newEffectEnd = Math.min(newBounds.end, Math.max(newEffectStart + 0.1, effect.end));
-                            
+
                             if (newEffectEnd > newBounds.end) {
                                 newEffectEnd = newBounds.end;
                                 newEffectStart = Math.max(newBounds.start, newEffectEnd - effectDuration);
@@ -818,7 +841,7 @@ export const ProjectScreen: React.FC<ProjectScreenProps> = ({ sessionId }) => {
                             const elemDuration = element.end - element.start;
                             let newElemStart = Math.max(newBounds.start, Math.min(element.start, newBounds.end - 0.1));
                             let newElemEnd = Math.min(newBounds.end, Math.max(newElemStart + 0.1, element.end));
-                            
+
                             if (newElemEnd > newBounds.end) {
                                 newElemEnd = newBounds.end;
                                 newElemStart = Math.max(newBounds.start, newElemEnd - elemDuration);
@@ -835,7 +858,7 @@ export const ProjectScreen: React.FC<ProjectScreenProps> = ({ sessionId }) => {
                     } else if (shiftDelta !== 0) {
                         // For OTHER clips that shifted: shift effects/elements by the delta
                         console.log(`[handleClipResize] Shifting ${displayClip.clipName} effects/elements by ${shiftDelta}s`);
-                        
+
                         const shiftedEffects = (displayClip.effects || []).map((effect: any) => {
                             const shifted = {
                                 ...effect,
@@ -865,7 +888,7 @@ export const ProjectScreen: React.FC<ProjectScreenProps> = ({ sessionId }) => {
 
                     return updatedClip;
                 });
-                
+
                 console.log('[handleClipResize] DisplayElements after update:', updatedDisplayElements);
             }
 
@@ -876,11 +899,11 @@ export const ProjectScreen: React.FC<ProjectScreenProps> = ({ sessionId }) => {
             console.log(`[handleClipResize] Resized ${clipName}: ${newStart.toFixed(2)}s - ${newEnd.toFixed(2)}s, total duration: ${newTotalDuration.toFixed(2)}s`);
             console.log('[handleClipResize] Updated clips:', updatedClips);
 
-            return { 
-                ...prev, 
-                timeline: { 
-                    ...prev.timeline, 
-                    clips: updatedClips 
+            return {
+                ...prev,
+                timeline: {
+                    ...prev.timeline,
+                    clips: updatedClips
                 },
                 displayElements: updatedDisplayElements
             };
@@ -1347,7 +1370,7 @@ export const ProjectScreen: React.FC<ProjectScreenProps> = ({ sessionId }) => {
     const videoLayerRef = useRef<HTMLDivElement>(null);
     const rafRef = useRef<number | null>(null);
     const audioStartedRef = useRef<boolean>(false); // Track if audio started for current playback
-    
+
     // ============== PLAYBACK REFS ==============
     const currentTimeRef = useRef<number>(0); // Mutable ref to track time without re-renders
 
@@ -1411,11 +1434,11 @@ export const ProjectScreen: React.FC<ProjectScreenProps> = ({ sessionId }) => {
             setAspectRatioInitialized(true);
         }
     }, [results, aspectRatioInitialized, cacheBustVersion]); // Added cacheBustVersion to reload audio when cache changes
-    
+
     // Preload all clip audio files for smooth transitions
     useEffect(() => {
         const preloadedAudio: HTMLAudioElement[] = [];
-        
+
         Object.entries(clipAudioUrls).forEach(([clipName, url]) => {
             if (url) {
                 const audio = new Audio();
@@ -1426,7 +1449,7 @@ export const ProjectScreen: React.FC<ProjectScreenProps> = ({ sessionId }) => {
                 console.log(`[Audio Preload] Preloading ${clipName}:`, url);
             }
         });
-        
+
         return () => {
             // Cleanup preloaded audio on unmount
             preloadedAudio.forEach(audio => {
@@ -1434,7 +1457,7 @@ export const ProjectScreen: React.FC<ProjectScreenProps> = ({ sessionId }) => {
             });
         };
     }, [clipAudioUrls]);
-    
+
     const showTranscriptionPanel = activeSidebarItem === 'script';
     const showMusicPanel = activeSidebarItem === 'music';
     // Note: Elements panel logic moved to TextEditPanel which shows based on isTextSelected
@@ -1621,28 +1644,28 @@ export const ProjectScreen: React.FC<ProjectScreenProps> = ({ sessionId }) => {
     const seekFlagRef = useRef(false);
     const playbackIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
     const lastClipNameRef = useRef<string | null>(null); // Track current clip to detect changes
-    
+
     // Keep refs in sync with state
     useEffect(() => { isPlayingRef.current = isPlaying; }, [isPlaying]);
     useEffect(() => { timelineRef.current = results?.timeline; }, [results?.timeline]);
     useEffect(() => { clipAudioUrlsRef.current = clipAudioUrls; }, [clipAudioUrls]);
-    
+
     // Helper to load and play audio for a clip
     const loadAudioForClip = useCallback((clipName: 'intro' | 'video' | 'outro', clipRelativeTime: number) => {
         const audio = aiAudioRef.current;
         if (!audio) return;
-        
+
         const audioUrl = clipAudioUrlsRef.current[clipName];
         if (!audioUrl) {
             console.log(`[Playback] No audio URL for ${clipName}`);
             return;
         }
-        
+
         // Check if source needs to change
         const currentSrc = audio.src || '';
         const urlFilename = audioUrl.split('?')[0].split('/').pop() || '';
         const needsSourceChange = urlFilename && !currentSrc.includes(urlFilename);
-        
+
         if (needsSourceChange) {
             console.log(`[Playback] Loading audio for ${clipName}:`, audioUrl);
             audio.src = audioUrl;
@@ -1656,7 +1679,7 @@ export const ProjectScreen: React.FC<ProjectScreenProps> = ({ sessionId }) => {
             }
         }
     }, []);
-    
+
     // Stop playback interval
     const stopPlayback = useCallback(() => {
         if (playbackIntervalRef.current) {
@@ -1665,40 +1688,40 @@ export const ProjectScreen: React.FC<ProjectScreenProps> = ({ sessionId }) => {
             console.log('[Playback] Stopped');
         }
     }, []);
-    
+
     // Start playback interval
     const startPlayback = useCallback(() => {
         if (playbackIntervalRef.current) {
             console.log('[Playback] Already running');
             return;
         }
-        
+
         const timeline = timelineRef.current;
         if (!timeline) {
             console.log('[Playback] No timeline available');
             return;
         }
-        
+
         if (!videoRef.current) {
             console.log('[Playback] No video element');
             return;
         }
-        
+
         playbackStartTimeRef.current = performance.now();
         playbackStartTimelineTimeRef.current = currentTimeRef.current;
         // DON'T reset audioStartedRef here - handlePlayPause already set it up correctly
-        
+
         console.log(`[Playback] Starting at timeline ${playbackStartTimelineTimeRef.current}s, audioStarted: ${audioStartedRef.current}`);
-        
+
         // Playback tick - runs every 16ms (~60fps)
         playbackIntervalRef.current = setInterval(() => {
             const video = videoRef.current;
             const audio = aiAudioRef.current;
-            
+
             if (!video || !isPlayingRef.current || !timelineRef.current) {
                 return;
             }
-            
+
             // Check if seek happened - reset playback reference but NOT audioStartedRef
             // (handleSeek already correctly set up audio for the target position)
             if (seekFlagRef.current) {
@@ -1708,23 +1731,23 @@ export const ProjectScreen: React.FC<ProjectScreenProps> = ({ sessionId }) => {
                 seekFlagRef.current = false;
                 console.log(`[Playback] Seek detected, continuing from ${currentTimeRef.current}s`);
             }
-            
+
             const timeline = timelineRef.current;
             const elapsedMs = performance.now() - playbackStartTimeRef.current;
             const elapsedSec = elapsedMs / 1000;
             let newTime = playbackStartTimelineTimeRef.current + elapsedSec;
-            
+
             // Get current clip
             const clip = getActiveClip(timeline, newTime);
             const mode = getPlaybackMode(timeline, newTime);
-            
+
             if (!clip) {
                 console.log('[Playback] No clip at time', newTime);
                 stopPlayback();
                 setIsPlaying(false);
                 return;
             }
-            
+
             // Detect clip changes and reload audio
             if (lastClipNameRef.current !== clip.name) {
                 lastClipNameRef.current = clip.name;
@@ -1733,46 +1756,46 @@ export const ProjectScreen: React.FC<ProjectScreenProps> = ({ sessionId }) => {
                 // Reset audio so it gets reloaded for new clip
                 audioStartedRef.current = false;
             }
-            
+
             // Handle clip transitions
             if (newTime >= clip.end) {
                 const nextClip = getActiveClip(timeline, clip.end + 0.001);
-                
+
                 if (clip.name === 'intro' && nextClip?.name === 'video') {
                     console.log('[Playback] Transition: intro → video');
                     newTime = clip.end;
-                    
+
                     // Start video from beginning
                     video.currentTime = 0;
                     video.play().catch(e => console.error('Video play error:', e));
-                    
+
                     // Load video audio
                     loadAudioForClip('video', 0);
                     audioStartedRef.current = true;
                     lastClipNameRef.current = 'video';
                     setActiveClip(nextClip);
-                    
+
                     // Reset playback reference for new clip
                     playbackStartTimeRef.current = performance.now();
                     playbackStartTimelineTimeRef.current = newTime;
-                    
+
                 } else if (clip.name === 'video' && nextClip?.name === 'outro') {
                     console.log('[Playback] Transition: video → outro');
                     newTime = clip.end;
-                    
+
                     // Pause video
                     video.pause();
-                    
+
                     // Load outro audio
                     loadAudioForClip('outro', 0);
                     audioStartedRef.current = true;
                     lastClipNameRef.current = 'outro';
                     setActiveClip(nextClip);
-                    
+
                     // Reset playback reference for new clip
                     playbackStartTimeRef.current = performance.now();
                     playbackStartTimelineTimeRef.current = newTime;
-                    
+
                 } else if (clip.name === 'outro' && newTime >= clip.end) {
                     console.log('[Playback] End of outro, stopping');
                     newTime = clip.end;
@@ -1784,32 +1807,32 @@ export const ProjectScreen: React.FC<ProjectScreenProps> = ({ sessionId }) => {
                     return;
                 }
             }
-            
+
             // Clamp time
             const totalDuration = getTimelineDuration(timeline) || 0;
             newTime = Math.min(newTime, totalDuration);
-            
+
             // Update state
             currentTimeRef.current = newTime;
             setCurrentTime(newTime);
-            
+
             // Mode-specific handling
             if (mode === 'video') {
                 // Keep video in sync
                 const expectedVideoTime = timelineToVideoTime(timeline, newTime);
-                
+
                 if (video.paused) {
                     video.currentTime = expectedVideoTime;
                     video.play().catch(e => console.error('Video resume error:', e));
                 }
-                
+
                 // Start audio if not started
                 if (!audioStartedRef.current) {
                     const clipRelativeTime = newTime - clip.start;
                     loadAudioForClip('video', clipRelativeTime);
                     audioStartedRef.current = true;
                 }
-                
+
                 // Periodic audio sync (every 500ms)
                 const now = performance.now();
                 if (audio && now - lastAudioSyncRef.current > 500) {
@@ -1826,7 +1849,7 @@ export const ProjectScreen: React.FC<ProjectScreenProps> = ({ sessionId }) => {
                 if (!video.paused) {
                     video.pause();
                 }
-                
+
                 // Start audio if not started
                 if (!audioStartedRef.current) {
                     const clipRelativeTime = newTime - clip.start;
@@ -1834,10 +1857,10 @@ export const ProjectScreen: React.FC<ProjectScreenProps> = ({ sessionId }) => {
                     audioStartedRef.current = true;
                 }
             }
-            
+
         }, 16); // ~60fps
     }, [loadAudioForClip, stopPlayback]);
-    
+
     // Watch for isPlaying state changes
     useEffect(() => {
         if (isPlaying) {
@@ -1849,14 +1872,14 @@ export const ProjectScreen: React.FC<ProjectScreenProps> = ({ sessionId }) => {
             if (aiAudioRef.current) aiAudioRef.current.pause();
         }
     }, [isPlaying, startPlayback, stopPlayback]);
-    
+
     // Cleanup on unmount
     useEffect(() => {
         return () => {
             stopPlayback();
         };
     }, [stopPlayback]);
-    
+
     // Keep currentTimeRef in sync when currentTime changes externally (e.g., seek)
     useEffect(() => {
         currentTimeRef.current = currentTime;
@@ -1945,7 +1968,7 @@ export const ProjectScreen: React.FC<ProjectScreenProps> = ({ sessionId }) => {
     // Parse and normalize effects when results are available
     useEffect(() => {
         console.log('[Effects] useEffect triggered - results:', !!results, 'recordingDimensions:', !!recordingDimensions);
-        
+
         if (!results) {
             console.log('[Effects] No results yet, skipping effect extraction');
             return;
@@ -1961,6 +1984,11 @@ export const ProjectScreen: React.FC<ProjectScreenProps> = ({ sessionId }) => {
             effectsArray = results.displayElements.flatMap((element: any) => {
                 const clipStart = element.clipStart;
                 const clipEnd = element.clipEnd;
+                console.log('[Effects] Processing displayElement:', {
+                    clipName: element.clipName,
+                    effectsCount: element.effects?.length || 0,
+                    firstEffectScale: element.effects?.[0]?.scale
+                });
                 return (element.effects || []).map((effect: any) => ({
                     ...effect,
                     clipStart,
@@ -1968,6 +1996,14 @@ export const ProjectScreen: React.FC<ProjectScreenProps> = ({ sessionId }) => {
                 }));
             });
             console.log('[Effects] Extracted from displayElements:', effectsArray.length, 'effects with clip boundaries');
+            if (effectsArray.length > 0) {
+                console.log('[Effects] First extracted effect:', {
+                    scale: effectsArray[0].scale,
+                    start: effectsArray[0].start,
+                    end: effectsArray[0].end,
+                    bounds: effectsArray[0].target?.bounds
+                });
+            }
 
             // Extract text elements from displayElements
             // CRITICAL: Include clip boundaries so TextOverlayLayer can calculate absolute times
@@ -2011,7 +2047,7 @@ export const ProjectScreen: React.FC<ProjectScreenProps> = ({ sessionId }) => {
                 // Include effect if it has bounds AND (is zoom type OR has zoom enabled)
                 return hasBounds && (isZoomType || hasZoomEnabled);
             });
-        
+
         console.log('[Effects] Filtering results:', {
             totalEffects: effectsArray.length,
             withBoundsAndZoom: filtered.length,
@@ -2027,6 +2063,13 @@ export const ProjectScreen: React.FC<ProjectScreenProps> = ({ sessionId }) => {
         const normalized = filtered.map((effect: any) => {
             // Use backend-computed scale if available, otherwise calculate locally
             const precomputedScale = effect.scale && effect.scale > 0 ? effect.scale : undefined;
+            console.log('[Effects] Normalizing effect:', {
+                start: effect.start,
+                end: effect.end,
+                scale: effect.scale,
+                precomputedScale,
+                bounds: effect.target?.bounds
+            });
             const normalizedBounds = normalizeCoordinates(
                 effect.target.bounds,
                 recordingDimensions.recordingWidth,
@@ -2038,6 +2081,7 @@ export const ProjectScreen: React.FC<ProjectScreenProps> = ({ sessionId }) => {
             return { ...effect, normalizedBounds };
         });
 
+        console.log('[Effects] ✅ Setting normalizedEffects:', normalized.length, 'effects');
         setNormalizedEffects(normalized);
     }, [results, recordingDimensions]);
 
@@ -2049,11 +2093,11 @@ export const ProjectScreen: React.FC<ProjectScreenProps> = ({ sessionId }) => {
             console.log('[Recording] Already have dimensions:', recordingDimensions);
             return;
         }
-        
+
         // Check top-level first
         let width = (results as any)?.recordingWidth;
         let height = (results as any)?.recordingHeight;
-        
+
         // If not at top level, check in timeline.clips[].media
         if (!width || !height) {
             const videoClip = results?.timeline?.clips?.find((c: any) => c.name === 'video');
@@ -2062,7 +2106,7 @@ export const ProjectScreen: React.FC<ProjectScreenProps> = ({ sessionId }) => {
                 height = videoClip.media[0].recordingHeight;
             }
         }
-        
+
         if (width && height) {
             console.log('[Recording] Using backend dimensions from timeline:', width, 'x', height);
             setRecordingDimensions({ recordingWidth: width, recordingHeight: height });
@@ -2153,7 +2197,7 @@ export const ProjectScreen: React.FC<ProjectScreenProps> = ({ sessionId }) => {
                 }
                 return;
             }
-            
+
             lastUpdateTime = now;
 
             const activeEffects = getActiveEffects(normalizedEffects, time);
@@ -2258,17 +2302,17 @@ export const ProjectScreen: React.FC<ProjectScreenProps> = ({ sessionId }) => {
                 // Update active clip state
                 setActiveClip(clip);
                 lastClipNameRef.current = clip.name; // Track current clip
-                
+
                 const clipRelativeTime = Math.max(0, currentTime - clip.start);
                 const clipName = clip.name as 'intro' | 'video' | 'outro';
-                
+
                 // For video mode, prepare video element
                 if (mode === 'video') {
                     const videoTime = timelineToVideoTime(results.timeline, currentTime);
                     video.currentTime = videoTime;
                     video.play().catch(e => console.error('Video play error:', e));
                 }
-                
+
                 // Start audio immediately for the current clip
                 const audioUrl = clipAudioUrls[clipName];
                 if (audioUrl && audio) {
@@ -2276,7 +2320,7 @@ export const ProjectScreen: React.FC<ProjectScreenProps> = ({ sessionId }) => {
                     const currentSrc = audio.src || '';
                     const urlFilename = audioUrl.split('?')[0].split('/').pop() || '';
                     const needsSourceChange = urlFilename && !currentSrc.includes(urlFilename);
-                    
+
                     if (needsSourceChange) {
                         console.log(`[Play] Loading audio for ${clipName}:`, audioUrl);
                         audio.src = audioUrl;
@@ -2284,13 +2328,13 @@ export const ProjectScreen: React.FC<ProjectScreenProps> = ({ sessionId }) => {
                     audio.currentTime = clipRelativeTime;
                     audio.play().catch(err => console.error(`[${clipName}] Audio play error:`, err));
                 }
-                
+
                 // Mark audio as started so playback loop doesn't restart it
                 audioStartedRef.current = true;
-                
+
                 // Set playing state - this triggers the stable playback loop
                 setIsPlaying(true);
-                
+
                 console.log(`[Playback] Starting at timeline ${currentTime}s, mode: ${mode}, clip: ${clip?.name}, clipTime: ${clipRelativeTime}s`);
             } else {
                 // Fallback for non-timeline videos
@@ -2319,14 +2363,14 @@ export const ProjectScreen: React.FC<ProjectScreenProps> = ({ sessionId }) => {
         // Clamp to valid range
         const totalDuration = results?.timeline ? getTimelineDuration(results.timeline) : duration;
         const clampedTime = Math.max(0, Math.min(timelineTime, totalDuration || timelineTime));
-        
+
         // Update timeline time and ref immediately
         setCurrentTime(clampedTime);
         currentTimeRef.current = clampedTime;
-        
+
         // Signal to the playback loop that a seek happened
         seekFlagRef.current = true;
-        
+
         // For any seek while playing, pause and let user resume manually
         if (isPlaying) {
             console.log(`[Seek] Seek detected while playing (${currentTime}s → ${clampedTime}s), pausing playback`);
@@ -2336,7 +2380,7 @@ export const ProjectScreen: React.FC<ProjectScreenProps> = ({ sessionId }) => {
             // Update lastClipNameRef so next play knows to load audio
             lastClipNameRef.current = null;
             audioStartedRef.current = false;
-            
+
             // Still update video position for preview
             if (results?.timeline) {
                 const mode = getPlaybackMode(results.timeline, clampedTime);
@@ -2368,48 +2412,48 @@ export const ProjectScreen: React.FC<ProjectScreenProps> = ({ sessionId }) => {
 
             const clipName = clip.name as 'intro' | 'video' | 'outro';
             const audioUrl = clipAudioUrls[clipName];
-            
+
             if (mode === 'intro' || mode === 'outro') {
                 // For intro/outro: ensure video is paused
                 video.pause();
-                
+
                 // Load and sync audio for this clip
                 if (audio && audioUrl) {
                     const currentSrc = audio.src || '';
                     const urlFilename = audioUrl.split('?')[0].split('/').pop() || '';
                     const needsSourceChange = urlFilename && !currentSrc.includes(urlFilename);
-                    
+
                     if (needsSourceChange) {
                         console.log(`[Seek] Loading audio for ${clipName}:`, audioUrl);
                         audio.src = audioUrl;
                     }
                     audio.currentTime = clipRelativeTime;
-                    
+
                     // If playing, start audio playback
                     if (isPlaying) {
                         audio.play().catch(err => console.error(`[${clipName}] Audio play error:`, err));
                         audioStartedRef.current = true;
                     }
                 }
-                
+
                 console.log(`[Seek] ${mode} at timeline ${clampedTime}s, clip time ${clipRelativeTime}s`);
             } else if (mode === 'video') {
                 // For video clip: sync video element
                 const videoTime = timelineToVideoTime(results.timeline, clampedTime);
                 video.currentTime = videoTime;
-                
+
                 // Load and sync audio for video clip
                 if (audio && audioUrl) {
                     const currentSrc = audio.src || '';
                     const urlFilename = audioUrl.split('?')[0].split('/').pop() || '';
                     const needsSourceChange = urlFilename && !currentSrc.includes(urlFilename);
-                    
+
                     if (needsSourceChange) {
                         console.log(`[Seek] Loading audio for ${clipName}:`, audioUrl);
                         audio.src = audioUrl;
                     }
                     audio.currentTime = clipRelativeTime;
-                    
+
                     // If playing, start video and audio playback
                     if (isPlaying) {
                         video.play().catch(e => console.error('Video play error:', e));
@@ -2420,7 +2464,7 @@ export const ProjectScreen: React.FC<ProjectScreenProps> = ({ sessionId }) => {
 
                 console.log(`[Seek] video at timeline ${clampedTime}s, video time ${videoTime}s, clip time ${clipRelativeTime}s`);
             }
-            
+
             // Apply effects at the new time position (important for seeking while paused)
             applyEffectsAtTime(clampedTime);
         } else {
