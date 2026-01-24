@@ -29,6 +29,36 @@ export async function processRecording(payload) {
 }
 
 /**
+ * Fetch project data for a specific client
+ * @param {string} clientId - Client ID
+ * @returns {Promise<Object>} Projects data
+ */
+export async function fetchProjectData(clientId) {
+    const url = `${API_BASE_URL}/api/project-data?client_id=${clientId}`;
+    console.log('fetchProjectData - Making API call to:', url);
+    
+    const response = await fetch(url, {
+        method: 'GET',
+        headers: {
+            'Content-Type': 'application/json',
+        }
+    });
+
+    console.log('fetchProjectData - Response status:', response.status);
+    console.log('fetchProjectData - Response ok:', response.ok);
+
+    if (!response.ok) {
+        const error = await response.json().catch(() => ({ message: 'Unknown error' }));
+        console.error('fetchProjectData - API error:', error);
+        throw new Error(error.message || `HTTP ${response.status}`);
+    }
+
+    const data = await response.json();
+    console.log('fetchProjectData - Response data:', data);
+    return data;
+}
+
+/**
  * Process a recorded session by sessionId
  * Backend will load files, transcribe with Deepgram, generate narrations
  * @param {string} sessionId - Session ID

@@ -149,3 +149,27 @@ export function updateInstructions(
     changeStack?: any[]
 ): Promise<{ message: string; savedAt: string; sessionId: string; changeSummary?: string }>;
 export function checkHealth(): Promise<{ status: string }>;
+
+// Project data interfaces
+export interface ProjectOwnerDetails {
+    name: string;
+    email: string;
+}
+
+export interface Project {
+    id?: number;
+    display_title?: string;
+    title?: string;
+    owner_details?: ProjectOwnerDetails;
+    updated_at?: string;
+    created_at?: string;
+    updated?: string;
+    created?: string;
+    status?: string;
+}
+
+export interface ProjectDataResponse {
+    projects: Project[];
+}
+
+export function fetchProjectData(clientId: string): Promise<ProjectDataResponse>;
