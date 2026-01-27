@@ -186,26 +186,26 @@ export const SettingsSection = () => {
     }
 
     return (
-        <div className="p-8 max-w-4xl mx-auto font-['Inter',Helvetica] h-full overflow-y-auto">
+        <div className="p-8 max-w-4xl mx-auto font-['Inter',Helvetica] h-full overflow-y-auto bg-[#0d0d15]">
 
             <div className="mb-8">
-                <h1 className="text-2xl font-bold text-[#131920]">Settings</h1>
-                <p className="text-gray-500 text-sm mt-1">Manage your profile and company preferences</p>
+                <h1 className="text-2xl font-bold text-white">Settings</h1>
+                <p className="text-gray-400 text-sm mt-1">Manage your profile and company preferences</p>
             </div>
 
             {/* Profile Header */}
             <div className="flex flex-col items-center mb-10">
                 <div className="relative group cursor-pointer" onClick={() => fileInputRef.current?.click()}>
-                    <div className="w-24 h-24 rounded-full bg-gray-100 flex items-center justify-center border-[3px] border-white shadow-md overflow-hidden ring-1 ring-gray-100">
+                    <div className="w-24 h-24 rounded-full bg-[#1a1a2e] flex items-center justify-center border-[3px] border-[#2a2a3e] shadow-md overflow-hidden ring-1 ring-[#2a2a3e]">
                         {formData.avatar ? (
                             <img src={formData.avatar} alt="Profile" className="w-full h-full object-cover" />
                         ) : (
-                            <span className="text-3xl font-semibold text-gray-400">
+                            <span className="text-3xl font-semibold text-gray-500">
                                 {formData.fullname?.charAt(0) || formData.username?.charAt(0) || "U"}
                             </span>
                         )}
                     </div>
-                    <div className="absolute bottom-0 right-0 w-8 h-8 bg-[#2563EB] rounded-full flex items-center justify-center border-[3px] border-white shadow-sm transition-transform hover:scale-110">
+                    <div className="absolute bottom-0 right-0 w-8 h-8 bg-[#2563EB] rounded-full flex items-center justify-center border-[3px] border-[#1a1a2e] shadow-sm transition-transform hover:scale-110">
                         <Camera className="w-3.5 h-3.5 text-white" />
                     </div>
                 </div>
@@ -217,17 +217,17 @@ export const SettingsSection = () => {
                     onChange={handleImageUpload}
                 />
                 <div className="mt-3 text-center">
-                    <h2 className="font-semibold text-[#131920] text-lg">{formData.fullname || "User"}</h2>
-                    <p className="text-sm text-gray-500">@{formData.username || "username"}</p>
+                    <h2 className="font-semibold text-white text-lg">{formData.fullname || "User"}</h2>
+                    <p className="text-sm text-gray-400">@{formData.username || "username"}</p>
                 </div>
             </div>
 
             <div className="grid gap-8">
 
                 {/* User Info Card */}
-                <div className="bg-white p-8 rounded-2xl border border-[#efeff0] shadow-sm">
+                <div className="bg-[#1a1a2e] p-8 rounded-2xl border border-[#2a2a3e] shadow-sm">
                     <div className="flex items-center justify-between mb-6">
-                        <h3 className="text-base font-semibold text-[#131920] flex items-center gap-2">
+                        <h3 className="text-base font-semibold text-white flex items-center gap-2">
                             <User className="w-4 h-4 text-[#2563EB]" />
                             Personal Information
                         </h3>
@@ -242,9 +242,9 @@ export const SettingsSection = () => {
 
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-6">
                         <div className="space-y-2">
-                            <label className="text-sm font-medium text-gray-700">Full Name</label>
+                            <label className="text-sm font-medium text-gray-300">Full Name</label>
                             <Input
-                                className="bg-[#fbfcff] border-gray-200 focus:border-[#2563EB] focus:ring-[#2563EB] transition-all h-11"
+                                className="bg-[#0d0d15] border-[#2a2a3e] text-white placeholder-gray-500 focus:border-[#2563EB] focus:ring-[#2563EB] transition-all h-11"
                                 placeholder="Enter your full name"
                                 value={formData.fullname}
                                 onChange={(e: React.ChangeEvent<HTMLInputElement>) => setFormData({ ...formData, fullname: e.target.value })}
@@ -252,11 +252,11 @@ export const SettingsSection = () => {
                         </div>
 
                         <div className="space-y-2">
-                            <label className="text-sm font-medium text-gray-700">Username</label>
+                            <label className="text-sm font-medium text-gray-300">Username</label>
                             <div className="relative">
-                                <span className="absolute left-3 top-3 text-gray-400 font-medium select-none">@</span>
+                                <span className="absolute left-3 top-3 text-gray-500 font-medium select-none">@</span>
                                 <Input
-                                    className="pl-8 bg-[#fbfcff] border-gray-200 focus:border-[#2563EB] focus:ring-[#2563EB] transition-all h-11"
+                                    className="pl-8 bg-[#0d0d15] border-[#2a2a3e] text-white placeholder-gray-500 focus:border-[#2563EB] focus:ring-[#2563EB] transition-all h-11"
                                     value={formData.username}
                                     onChange={(e: React.ChangeEvent<HTMLInputElement>) => setFormData({ ...formData, username: e.target.value })}
                                 />
@@ -264,9 +264,9 @@ export const SettingsSection = () => {
                         </div>
 
                         <div className="space-y-2">
-                            <label className="text-sm font-medium text-gray-700">Email Address</label>
+                            <label className="text-sm font-medium text-gray-300">Email Address</label>
                             <Input
-                                className="bg-[#fbfcff] border-gray-200 focus:border-[#2563EB] focus:ring-[#2563EB] transition-all h-11"
+                                className="bg-[#0d0d15] border-[#2a2a3e] text-white placeholder-gray-500 focus:border-[#2563EB] focus:ring-[#2563EB] transition-all h-11"
                                 value={formData.email}
                                 onChange={(e: React.ChangeEvent<HTMLInputElement>) => setFormData({ ...formData, email: e.target.value })}
                             />
@@ -274,30 +274,30 @@ export const SettingsSection = () => {
 
                         <div className="space-y-2">
                             <div className="flex justify-between">
-                                <label className="text-sm font-medium text-gray-700">Phone Number</label>
+                                <label className="text-sm font-medium text-gray-300">Phone Number</label>
                             </div>
                             <Input
                                 value={formData.phone}
                                 disabled
-                                className="bg-gray-50 text-gray-500 border-gray-100 cursor-not-allowed h-11"
+                                className="bg-[#0a0a0f] text-gray-500 border-[#1a1a2e] cursor-not-allowed h-11"
                             />
-                            <p className="text-[11px] text-gray-400 text-right">Cannot be changed</p>
+                            <p className="text-[11px] text-gray-500 text-right">Cannot be changed</p>
                         </div>
                     </div>
 
                     {/* Email Verification Banner - Styled to match */}
                     {formData.email && (
-                        <div className="mt-8 bg-orange-50/50 border border-orange-100 rounded-xl p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+                        <div className="mt-8 bg-orange-500/10 border border-orange-500/30 rounded-xl p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
                             <div className="flex items-center gap-3">
-                                <div className="p-2 bg-orange-100 rounded-full text-orange-600">
+                                <div className="p-2 bg-orange-500/20 rounded-full text-orange-400">
                                     <AlertTriangle className="w-4 h-4" />
                                 </div>
                                 <div>
-                                    <p className="text-sm font-medium text-gray-900">Verify your email</p>
-                                    <p className="text-xs text-gray-500">Please verify {formData.email} to secure your account</p>
+                                    <p className="text-sm font-medium text-orange-200">Verify your email</p>
+                                    <p className="text-xs text-orange-300">Please verify {formData.email} to secure your account</p>
                                 </div>
                             </div>
-                            <Button variant="outline" size="sm" className="bg-white border-orange-200 text-orange-700 hover:bg-orange-50 hover:text-orange-800 whitespace-nowrap font-medium h-9">
+                            <Button variant="outline" size="sm" className="bg-orange-500/10 border-orange-500/30 text-orange-400 hover:bg-orange-500/20 hover:text-orange-300 whitespace-nowrap font-medium h-9">
                                 Send Verification
                             </Button>
                         </div>
@@ -305,9 +305,9 @@ export const SettingsSection = () => {
                 </div>
 
                 {/* Company Info Card */}
-                <div className="bg-white p-8 rounded-2xl border border-[#efeff0] shadow-sm">
+                <div className="bg-[#1a1a2e] p-8 rounded-2xl border border-[#2a2a3e] shadow-sm">
                     <div className="flex items-center justify-between mb-6">
-                        <h3 className="text-base font-semibold text-[#131920]">Company Details</h3>
+                        <h3 className="text-base font-semibold text-white">Company Details</h3>
                         <Button
                             className="bg-[#2563EB] hover:bg-[#1D4ED8] text-white h-9 px-4 text-xs font-semibold rounded-lg shadow-sm"
                             onClick={handleSaveCompany}
@@ -319,35 +319,35 @@ export const SettingsSection = () => {
 
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-6">
                         <div className="space-y-2">
-                            <label className="text-sm font-medium text-gray-700">Company Name</label>
+                            <label className="text-sm font-medium text-gray-300">Company Name</label>
                             <Input
-                                className="bg-[#fbfcff] border-gray-200 focus:border-[#2563EB] focus:ring-[#2563EB] transition-all h-11"
+                                className="bg-[#0d0d15] border-[#2a2a3e] text-white placeholder-gray-500 focus:border-[#2563EB] focus:ring-[#2563EB] transition-all h-11"
                                 value={formData.companyName}
                                 onChange={(e: React.ChangeEvent<HTMLInputElement>) => setFormData({ ...formData, companyName: e.target.value })}
                             />
                         </div>
                         <div className="space-y-2">
-                            <label className="text-sm font-medium text-gray-700">Industry</label>
+                            <label className="text-sm font-medium text-gray-300">Industry</label>
                             <Select
                                 value={formData.industry}
                                 onValueChange={(val: string) => setFormData({ ...formData, industry: val })}
                             >
-                                <SelectTrigger className="w-full bg-[#fbfcff] border-gray-200 text-gray-900 focus:border-[#2563EB] focus:ring-1 focus:ring-[#2563EB] transition-all h-11 px-3">
+                                <SelectTrigger className="w-full bg-[#0d0d15] border-[#2a2a3e] text-white focus:border-[#2563EB] focus:ring-1 focus:ring-[#2563EB] transition-all h-11 px-3">
                                     <SelectValue placeholder="Select industry" />
                                 </SelectTrigger>
-                                <SelectContent className="bg-white border border-gray-100 shadow-xl rounded-xl max-h-[240px] z-50">
+                                <SelectContent className="bg-[#1a1a2e] border border-[#2a2a3e] shadow-xl rounded-xl max-h-[240px] z-50">
                                     {industries.length > 0 ? (
                                         industries.map((ind, idx) => (
                                             <SelectItem
                                                 key={idx}
                                                 value={ind.name}
-                                                className="cursor-pointer py-2.5 px-3 focus:bg-blue-50 focus:text-[#2563EB] data-[state=checked]:text-[#2563EB] data-[state=checked]:bg-blue-50 text-gray-700"
+                                                className="cursor-pointer py-2.5 px-3 focus:bg-[#2563EB]/20 focus:text-[#2563EB] data-[state=checked]:text-[#2563EB] data-[state=checked]:bg-[#2563EB]/10 text-gray-300"
                                             >
                                                 {ind.name}
                                             </SelectItem>
                                         ))
                                     ) : (
-                                        <div className="p-3 text-sm text-gray-400 text-center">No industries found</div>
+                                        <div className="p-3 text-sm text-gray-500 text-center">No industries found</div>
                                     )}
                                 </SelectContent>
                             </Select>
@@ -358,8 +358,8 @@ export const SettingsSection = () => {
             </div>
 
             {message && (
-                <div className={`fixed bottom-6 right-6 px-6 py-4 rounded-xl shadow-xl text-white font-medium animate-in slide-in-from-bottom-5 z-50 flex items-center gap-3 ${message.type === 'success' ? 'bg-[#131920]' : 'bg-red-500'}`}>
-                    {message.type === 'success' && <div className="w-2 h-2 rounded-full bg-green-400" />}
+                <div className={`fixed bottom-6 right-6 px-6 py-4 rounded-xl shadow-xl text-white font-medium animate-in slide-in-from-bottom-5 z-50 flex items-center gap-3 ${message.type === 'success' ? 'bg-green-600/90 border border-green-500/50' : 'bg-red-600/90 border border-red-500/50'}`}>
+                    {message.type === 'success' && <div className="w-2 h-2 rounded-full bg-green-300" />}
                     {message.text}
                 </div>
             )}
