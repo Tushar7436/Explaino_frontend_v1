@@ -5,14 +5,17 @@ import {
   Sparkles,
   Video,
   Zap,
+  Edit2,
+  Check,
+  X,
+  Trash2,
 } from "lucide-react";
 import React, { useState, useEffect } from "react";
 import { Avatar, AvatarFallback } from "../../../../components/ui/avatar";
 import { Badge } from "../../../../components/ui/badge";
 import { Card, CardContent } from "../../../../components/ui/card";
 import { checkExtensionConnection, openExtension } from "../../../../utils/extensionUtils";
-<<<<<<< HEAD
-import { fetchExplainoProjects } from "../../../../services/graphql-api";
+import { fetchExplainoProjects, updateExplainoProjectName, deleteExplainoProject } from "../../../../services/graphql-api";
 
 interface Project {
   project_name: string;
@@ -43,6 +46,10 @@ export const HomeSection = (): JSX.Element => {
   const [userName, setUserName] = React.useState("User");
   const [projects, setProjects] = React.useState<Project[]>([]);
   const [loading, setLoading] = React.useState(true);
+  const [editingProjectId, setEditingProjectId] = React.useState<string | null>(null);
+  const [editingProjectName, setEditingProjectName] = React.useState<string>("");
+  const [updatingProjectId, setUpdatingProjectId] = React.useState<string | null>(null);
+  const [deletingProjectId, setDeletingProjectId] = React.useState<string | null>(null);
 
   React.useEffect(() => {
     // Set greeting
@@ -69,41 +76,75 @@ export const HomeSection = (): JSX.Element => {
         }
       }
       setLoading(false);
-=======
-import { fetchProjectData } from "../../../../services/backend-api";
-
-export const HomeSection = (): JSX.Element => {
-  const [projects, setProjects] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
-
-  useEffect(() => {
-    const loadProjects = async () => {
-      try {
-        setLoading(true);
-        const clientId = localStorage.getItem("id");
-        console.log("HomeSection - Client ID retrieved from localStorage:", clientId);
-        
-        if (clientId) {
-          console.log("HomeSection - Making API call to fetch project data...");
-          const projectData = await fetchProjectData(clientId);
-          console.log("HomeSection - API response received:", projectData);
-          setProjects(projectData.data?.projects || []);
-          console.log("HomeSection - Projects set:", projectData.data?.projects || []);
-        } else {
-          console.log("HomeSection - No client ID found in localStorage");
-        }
-      } catch (err) {
-        setError(err.message);
-        console.error("HomeSection - Failed to fetch project data:", err);
-      } finally {
-        setLoading(false);
-      }
->>>>>>> 24538221645b56ba8424bcb6453ada30be777e6c
     };
 
     loadProjects();
   }, []);
+
+  const handleEditClick = (project: Project) => {
+    setEditingProjectId(project.id);
+    setEditingProjectName(project.project_name);
+  };
+
+  const handleSaveProjectName = async (projectId: string) => {
+    if (!editingProjectName.trim()) {
+      handleCancelEdit();
+      return;
+    }
+
+    setUpdatingProjectId(projectId);
+    try {
+      // Make GraphQL mutation call to update project name
+      const updatedProject = await updateExplainoProjectName(projectId, editingProjectName);
+
+      if (updatedProject) {
+        // Update local state
+        setProjects(projects.map(p => 
+          p.id === projectId 
+            ? { ...p, project_name: updatedProject.project_name, updated_at: updatedProject.updated_at }
+            : p
+        ));
+        setEditingProjectId(null);
+        setEditingProjectName("");
+      } else {
+        console.error("Failed to update project name");
+      }
+    } catch (error) {
+      console.error("Error updating project name:", error);
+    } finally {
+      setUpdatingProjectId(null);
+    }
+  };
+
+  const handleCancelEdit = () => {
+    setEditingProjectId(null);
+    setEditingProjectName("");
+  };
+
+  const handleDeleteProject = async (projectId: string) => {
+    // Show confirmation dialog
+    if (!window.confirm("Are you sure you want to delete this project? This action cannot be undone.")) {
+      return;
+    }
+
+    setDeletingProjectId(projectId);
+    try {
+      const success = await deleteExplainoProject(projectId);
+
+      if (success) {
+        // Remove the deleted project from local state
+        setProjects(projects.filter(p => p.id !== projectId));
+      } else {
+        console.error("Failed to delete project");
+        alert("Failed to delete project. Please try again.");
+      }
+    } catch (error) {
+      console.error("Error deleting project:", error);
+      alert("Error deleting project. Please try again.");
+    } finally {
+      setDeletingProjectId(null);
+    }
+  };
 
   return (
     <div className="flex-1 w-full min-h-screen bg-[#0B0C15] text-white p-10 font-[Inter] overflow-y-auto">
@@ -291,7 +332,6 @@ export const HomeSection = (): JSX.Element => {
             {loading ? (
               <div className="p-8 text-center text-gray-400">
                 Loading projects...
-<<<<<<< HEAD
               </div>
             ) : projects.length === 0 ? (
               <div className="p-8 text-center text-gray-400">
@@ -304,8 +344,49 @@ export const HomeSection = (): JSX.Element => {
                   className="grid grid-cols-12 gap-4 p-5 border-b border-[#2A2B35] last:border-0 items-center hover:bg-[#1C1D26] transition-colors group cursor-pointer"
                 >
                   {/* Project Name */}
-                  <div className="col-span-5 font-semibold text-white pl-4 group-hover:text-[#EC4899] transition-colors">
-                    {project.project_name}
+                  <div className="col-span-5 font-semibold text-white pl-4 group-hover:text-[#EC4899] transition-colors flex items-center gap-2">
+                    {editingProjectId === project.id ? (
+                      <div className="flex items-center gap-2 w-full">
+                        <input
+                          type="text"
+                          value={editingProjectName}
+                          onChange={(e) => setEditingProjectName(e.target.value)}
+                          className="flex-1 bg-[#1C1D26] border border-[#EC4899] rounded px-2 py-1 text-white text-sm focus:outline-none"
+                          autoFocus
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter") handleSaveProjectName(project.id);
+                            if (e.key === "Escape") handleCancelEdit();
+                          }}
+                        />
+                        <button
+                          onClick={() => handleSaveProjectName(project.id)}
+                          disabled={updatingProjectId === project.id}
+                          className="p-1 hover:bg-[#2A2B35] rounded transition-colors disabled:opacity-50"
+                          title="Save"
+                        >
+                          <Check size={16} className="text-green-400" />
+                        </button>
+                        <button
+                          onClick={handleCancelEdit}
+                          disabled={updatingProjectId === project.id}
+                          className="p-1 hover:bg-[#2A2B35] rounded transition-colors disabled:opacity-50"
+                          title="Cancel"
+                        >
+                          <X size={16} className="text-red-400" />
+                        </button>
+                      </div>
+                    ) : (
+                      <>
+                        <span>{project.project_name}</span>
+                        <button
+                          onClick={() => handleEditClick(project)}
+                          className="p-1 opacity-0 group-hover:opacity-100 hover:bg-[#2A2B35] rounded transition-all"
+                          title="Edit project name"
+                        >
+                          <Edit2 size={14} className="text-gray-400" />
+                        </button>
+                      </>
+                    )}
                   </div>
 
                   {/* Creator - Using current user */}
@@ -336,74 +417,24 @@ export const HomeSection = (): JSX.Element => {
                   </div>
 
                   {/* Status Badge */}
-                  <div className="col-span-2 pl-4">
+                  <div className="col-span-2 pl-4 flex items-center justify-between">
                     <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-[#1C1D26] border border-[#2A2B35]">
                       <div className="w-2 h-2 rounded-full bg-gray-500" />
                       <span className="text-xs font-medium text-gray-300">
                         In Progress
                       </span>
                     </div>
+                    <button
+                      onClick={() => handleDeleteProject(project.id)}
+                      disabled={deletingProjectId === project.id}
+                      className="p-1 opacity-0 group-hover:opacity-100 hover:bg-red-500/20 rounded transition-all disabled:opacity-50"
+                      title="Delete project"
+                    >
+                      <Trash2 size={16} className="text-red-400" />
+                    </button>
                   </div>
                 </div>
               ))
-=======
-              </div>
-            ) : error ? (
-              <div className="p-8 text-center text-red-400">
-                Error loading projects: {error}
-              </div>
-            ) : projects.length === 0 ? (
-              <div className="p-8 text-center text-gray-400">
-                No projects found
-              </div>
-            ) : (
-              projects.map((project, index) => (
-              <div
-                key={project.id || index}
-                className="grid grid-cols-12 gap-4 p-5 border-b border-[#2A2B35] last:border-0 items-center hover:bg-[#1C1D26] transition-colors group cursor-pointer"
-              >
-                {/* Project Name */}
-                <div className="col-span-5 font-semibold text-white pl-4 group-hover:text-[#EC4899] transition-colors">
-                  {project.project_name || project.display_title || 'Untitled Project'}
-                </div>
-
-                {/* Creator */}
-                <div className="col-span-3 flex items-center gap-3">
-                  <Avatar className="h-9 w-9 border-2 border-[#0B0C15]">
-                    <AvatarFallback className="bg-[#14b8a6] text-white font-medium text-sm">
-                      {(project.owner_details?.name || 'U').charAt(0)}
-                    </AvatarFallback>
-                  </Avatar>
-                  <div className="flex flex-col">
-                    <span className="text-sm font-medium text-white leading-tight">
-                      {project.owner_details?.name || 'Unknown User'}
-                    </span>
-                    <span className="text-xs text-gray-500 mt-0.5">
-                      {project.owner_details?.email || ''}
-                    </span>
-                  </div>
-                </div>
-
-                {/* Dates */}
-                <div className="col-span-1 text-sm text-gray-400 font-medium">
-                  {project.updated_at ? new Date(project.updated_at).toLocaleDateString() : ''}
-                </div>
-                <div className="col-span-1 text-sm text-gray-400 font-medium">
-                  {project.created_at ? new Date(project.created_at).toLocaleDateString() : ''}
-                </div>
-
-                {/* Status Badge */}
-                <div className="col-span-2 pl-4">
-                  <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-[#1C1D26] border border-[#2A2B35]">
-                    <div className="w-2 h-2 rounded-full bg-gray-500" />
-                    <span className="text-xs font-medium text-gray-300">
-                      {project.status || 'Unpublished'}
-                    </span>
-                  </div>
-                </div>
-              </div>
-            ))
->>>>>>> 24538221645b56ba8424bcb6453ada30be777e6c
             )}
           </div>
         </div>

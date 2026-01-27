@@ -73,13 +73,47 @@ export const GET_INDUSTRIES_QUERY = `
 
 export const GET_EXPLAINO_PROJECTS_QUERY = `
   query GetExplainoProjects($client_id: uuid!) {
-    vocallabs_Explaino_Projects(where: { client_id: { _eq: $client_id } }) {
+    vocallabs_Explaino_Projects(
+      where: { client_id: { _eq: $client_id } }
+      order_by: { created_at: desc }
+    ) {
       project_name
       created_at
       updated_at
       client_id
       id
       session_id
+    }
+  }
+`;
+
+export const UPDATE_EXPLAINO_PROJECT_NAME = `
+  mutation UpdateExplainoProjectName($id: uuid!, $project_name: String!) {
+    update_vocallabs_Explaino_Projects(
+      where: { id: { _eq: $id } }
+      _set: { project_name: $project_name, updated_at: "now()" }
+    ) {
+      affected_rows
+      returning {
+        id
+        project_name
+        updated_at
+        client_id
+        session_id
+      }
+    }
+  }
+`;
+
+export const DELETE_EXPLAINO_PROJECT = `
+  mutation DeleteExplainoProject($id: uuid!) {
+    delete_vocallabs_Explaino_Projects(where: { id: { _eq: $id } }) {
+      affected_rows
+      returning {
+        id
+        project_name
+        client_id
+      }
     }
   }
 `;
